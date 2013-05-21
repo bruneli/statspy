@@ -1,0 +1,1 @@
+Python package with a list of classes and tools intended to ease the design of complex distributions. Later complex distributions can be used to perform statistical tests or extract confidence intervals.
