@@ -184,17 +184,23 @@ class PDF(object):
        >>> pdf_n = spy.PDF("poisson(n;mu)",mu=10.)
     """
 
+    # Define the different parameter types
+    (RAW,DERIVED) = (0,10)
+
     def __init__(self,*args,**kwargs):
         self.name = None
         self.func = None
         self.params = []
         self.isuptodate = False
         self.logger = logging.getLogger('statspy.core.PDF')
+        self.pdftype = PDF.RAW
         self._rvs = []
         try:
             self.logger.debug('args = %s, kwargs = %s',args,kwargs)
             foundArgs = self._check_args_syntax(args)
             self._check_kwargs_syntax(kwargs,foundArgs)
+            if isinstance(self.func, scipy.stats.rv_generic):
+                self.isuptodate = True
         except:
             raise
 
@@ -292,6 +298,10 @@ class PDF(object):
             if self.func != None:
                 raise SyntaxError("self.func already exists.")
             self.func = kwargs['func']
+            if type(self.func) == list:
+                self.pdftype = PDF.DERIVED
+            else:
+                self.pdftype = PDF.RAW
         for param in self.params:
             if param.name in kwargs and kwargs[param.name] != param.value:
                 param.value = kwargs[param.name]
@@ -302,6 +312,7 @@ class PDF(object):
     def _declare(self,func_name,lpars):
         # Declare functional form of PDF (no shape parameter specified yet)
         self.func = getattr(scipy.stats,func_name)
+        self.pdftype = PDF.RAW
         # Declare/Update parameters
         for parStr in lpars:
             parName = parStr.split('=')[0].strip().lstrip()
