@@ -1,20 +1,21 @@
 """module core.py
 
 This module contains the base classes to define a random variable,
-a probability density function, or a parameter.
+a probability function, or a parameter.
 The module is also hosting global dictonaries used to keep track of
-the different variables, parameters and pdf declared.
+the different variables, parameters and probability functions declared.
 
 """
 
 import logging
 import operator
+import numpy as np
 import scipy.stats
 
-__all__ = ['RV','PDF','Param','logger']
+__all__ = ['RV','PF','Param','logger']
 
 _drvs    = {}  # Dictionary hosting the list of random variables
-_dpdfs   = {}  # Dictionary hosting the list of probability density functions
+_dpfs    = {}  # Dictionary hosting the list of probability functions
 _dparams = {}  # Dictionary hosting the list of parameters
 
 # Logging system
@@ -33,24 +34,24 @@ class RV(object):
        ----------
        name : str
            Random Variable name
-       pdf : statspy.core.PDF
-           Probability Density Function object associated to a Random Variable
+       pf : statspy.core.PF
+           Probability Function object associated to a Random Variable
        params : statspy.core.Param list
-           List of shape parameters used to define the pdf
+           List of shape parameters used to define the pf
        isuptodate : bool
-           Tells whether associated PDF needs to be normalised or not
+           Tells whether associated PF needs to be normalised or not
        logger : logging.Logger
            message logging system
 
        Examples:
        ---------
-       >>> import statspy as spy 
-       >>> x = spy.RV("norm(x|mu=10,sigma=2)")
+       >>> import statspy as sp 
+       >>> x = sp.RV("norm(x|mu=10,sigma=2)")
     """
 
     def __init__(self,*args,**kwargs):
         self.name = ""
-        self.pdf = None
+        self.pf = None
         self.params = []
         self.isuptodate = True
         self.logger = logging.getLogger('statspy.core.RV')
@@ -61,8 +62,8 @@ class RV(object):
         except:
             raise
 
-    def pdf(self,x,**kwargs):
-        """Evaluate Probability Density Function in x
+    def pf(self,x,**kwargs):
+        """Evaluate Probability (Mass/Density) Function in x
 
         Parameters
         ----------
@@ -72,36 +73,22 @@ class RV(object):
             Shape parameters values
 
         """
-        # Check if self._pdf contains a pdf() method
-        try:
-            check_method_exists(obj=self._pdf,name='pdf')
-        except:
-            raise
-        # Get shape parameters
-        shape_values = []
-        for param in self.params:
-            if param.name in kwargs and kwargs[param.name] != param.value:
-                param.value = kwargs[param.name]
-                self.logger.debug('%s value is updated to %f',
-                                  param.name,param.value)
-            shape_values.append(param.value)
-        #
         if type(x) == float:
-            self.logger.debug('x=%f,shape_values=%s',x,shape_values)
-        return self._pdf.pdf(x,*shape_values)
+            self.logger.debug('x=%f,shape_values=%s',x,kwargs)
+        return self._pf(x,**kwargs)
 
     def _check_args_syntax(self,args):
         if not len(args): return False
         if not isinstance(args[0],str):
-            raise SyntaxError("If an argument is passed to PDF without a keyword, it must be a string.")
+            raise SyntaxError("If an argument is passed to PF without a keyword, it must be a string.")
         # Analyse the string
         theStr = args[0]
         if '=' in theStr:
             self.name = theStr.split('=')[0].strip().lstrip()
-            self.logger.debug("Found PDF name %s", self.name)
+            self.logger.debug("Found PF name %s", self.name)
             theStr = theStr.split('=')[1]
         if not '(' in theStr:
-            raise SyntaxError("No pdf found in %s" % theStr)
+            raise SyntaxError("No pf found in %s" % theStr)
         if not ')' in theStr:
             raise SyntaxError("Paranthesis is not closed in %s" % theStr)
         func_name = theStr.split('(')[0].strip()
@@ -131,10 +118,10 @@ class RV(object):
 
     def _check_kwargs_syntax(self,kwargs,foundArgs):
         if not len(kwargs): return False
-        if not foundArgs and not 'pdf' in kwargs:
-            raise SyntaxError("You cannot declare a Random Variable without specifying a pdf.")
+        if not foundArgs and not 'pf' in kwargs:
+            raise SyntaxError("You cannot declare a Random Variable without specifying a pf.")
         if 'name' in kwargs: self.name = kwargs['name']
-        if 'pdf' in kwargs: self.pdf = kwargs['pdf']
+        if 'pf' in kwargs: self.pf = kwargs['pf']
         if 'params' in kwargs: self.params = kwargs['params']
         for param in self.params:
             if param.name in kwargs and kwargs[param.name] != param.value:
@@ -143,7 +130,7 @@ class RV(object):
                                   param.name,param.value)
         return True
 
-    def _declare(self,pdfName,rvName,lpars):
+    def _declare(self,pfName,rvName,lpars):
         # Set/Update Random Variable name
         self.name = rvName
         # Declare/Update parameters
@@ -153,35 +140,39 @@ class RV(object):
             if '=' in parStr:
                 parVal = float(parStr.split('=')[1].strip().lstrip())
             if not parName in _dparams:
-                _dparams[parName] = {'rvs':[],'pdfs':[]}
+                _dparams[parName] = {'rvs':[],'pfs':[]}
                 _dparams[parName]['obj'] = Param(name=parName,value=parVal)
             if not self.name in _dparams[parName]['rvs']:
                 _dparams[parName]['rvs'].append(self.name)
             self.params.append(_dparams[parName]['obj'])
-        # Declare pdf (no shape parameter specified yet)
-        self._pdf = getattr(scipy.stats,pdfName)
+        # Declare pf (no shape parameter specified yet)
+        self._pf = getattr(scipy.stats,pfName)
         return
 
-class PDF(object):
-    """Base class to define a Probability Density Function. 
+class PF(object):
+    """Base class to define a Probability Function. 
+
+       Probability Function is a generic name which includes both the
+       probability mass function for discrete random variables and the
+       probability density fucntion for continuous random variables.
 
        Attributes
        ----------
        name : str (optional)
            Function name
-       func : scipy.stats.rv_generic (optional)
+       func : scipy.stats.distributions.rv_generic (optional)
            Probability Density Function object associated to a Random Variable
        params : statspy.core.Param list
-           List of shape parameters used to define the pdf
+           List of shape parameters used to define the pf
        isuptodate : bool
-           Tells whether PDF needs to be normalised or not
+           Tells whether PF needs to be normalised or not
        logger : logging.Logger
            message logging system
 
        Examples:
        ---------
-       >>> import statspy as spy 
-       >>> pdf_n = spy.PDF("poisson(n;mu)",mu=10.)
+       >>> import statspy as sp
+       >>> pmf_n = sp.PF("poisson(n;mu)",mu=10.)
     """
 
     # Define the different parameter types
@@ -192,14 +183,14 @@ class PDF(object):
         self.func = None
         self.params = []
         self.isuptodate = False
-        self.logger = logging.getLogger('statspy.core.PDF')
-        self.pdftype = PDF.RAW
+        self.logger = logging.getLogger('statspy.core.PF')
+        self.pftype = PF.RAW
         self._rvs = []
         try:
             self.logger.debug('args = %s, kwargs = %s',args,kwargs)
             foundArgs = self._check_args_syntax(args)
             self._check_kwargs_syntax(kwargs,foundArgs)
-            if isinstance(self.func, scipy.stats.rv_generic):
+            if isinstance(self.func, scipy.stats.distributions.rv_generic):
                 self.isuptodate = True
         except:
             raise
@@ -209,20 +200,21 @@ class PDF(object):
 
         Parameters
         ----------
-        args : float, ndarray, optional, multiple values for multivariate pdfs
+        args : float, ndarray, optional, multiple values for multivariate pfs
             Random Variable value(s)
         kwargs : dictionary, optional
             Shape parameters values
 
         """
-        # Check if self._pdf contains a pdf() method
-        method_name = 'pdf'
-        try:
-            if isinstance(self.func, scipy.stats.rv_discrete):
-                method_name = 'pmf'
-            check_method_exists(obj=self.func,name=method_name)
-        except:
-            raise
+        # Check if self._pf contains a pdf() or a pmf() method
+        if self.pftype == PF.RAW:
+            method_name = 'pdf'
+            try:
+                if isinstance(self.func, scipy.stats.rv_discrete):
+                    method_name = 'pmf'
+                check_method_exists(obj=self.func,name=method_name)
+            except:
+                raise
         # Get random variable value(s), mandatory
         rv_values = None
         if len(args):
@@ -231,7 +223,7 @@ class PDF(object):
             rv_values = []
             for rv_name in self._rvs:
                 if rv_name in kwargs: rv_values.append(kwargs[rv_name])
-        if len(rv_values) != len(self._rvs):
+        if self.pftype == PF.RAW and len(rv_values) != len(self._rvs):
             raise SyntaxError('Provide %s input arguments for rvs' % 
                               len(self._rvs))
         # Get shape parameters, optional
@@ -243,25 +235,71 @@ class PDF(object):
                                   param.name,param.value)
             param_values[ipar] = param.value
         if type(rv_values[0]) == float:
-            self.logger.debug('self.func values=%s', rv_values[0])
+            self.logger.debug('self.func values=%s', rv_values)
+        # Compute pf value in x
+        #  - in case of a DERIVED PF, call an operator
+        if self.pftype == PF.DERIVED:
+            if not isinstance(self.func, list) or len(self.func) != 3:
+                raise SyntaxError('DERIVED function is not recognized.')
+            op = self.func[0]
+            vals = [0.,0.]
+            for idx in [1,2]:
+                the_args = []
+                for irv,rv_name in enumerate(self._rvs):
+                    if rv_name in self.func[idx]._rvs:
+                        the_args.append(rv_values[irv])
+                vals[idx-1] = self.func[idx](*the_args, **kwargs)
+            same_rvs = (len(self.func[1]._rvs) == len(self._rvs) and
+                        len(self.func[2]._rvs) == len(self._rvs))
+            #if (not same_rvs and isinstance(vals[0], np.ndarray) and
+            #    isinstance(vals[1], np.ndarray)):
+            #    # Matrix product
+            #    m1 = np.mat(vals[0])
+            #    m2 = np.mat(vals[1])
+            #    value = op(m1.T, m2)
+            #else:
+            #    # Array-like product
+            value = op(vals[0],vals[1])
+            return value
+        #  - in case of a RAW PF, call directly the scipy function
         if method_name == 'pmf': 
             return self.func.pmf(rv_values[0], *param_values)
         return self.func.pdf(rv_values[0], *param_values)
 
+    def __mul__(self,other):
+        """Multiply a pf by another pf.
+        
+        Parameters
+        ----------
+        self : PF
+        other : PF
+
+        Returns
+        -------
+        new : PF
+             new pf which is the product of self and other
+        
+        """
+        try:
+            new = PF(func=[operator.mul, self, other])
+        except:
+            raise
+        return new
+
     def _check_args_syntax(self,args):
         if not len(args): return False
         if not isinstance(args[0],str):
-            raise SyntaxError("If an argument is passed to PDF without a keyword, it must be a string.")
+            raise SyntaxError("If an argument is passed to PF without a keyword, it must be a string.")
         # Analyse the string
         theStr = args[0]
         if not '(' in theStr:
-            raise SyntaxError("No pdf found in %s" % theStr)
+            raise SyntaxError("No pf found in %s" % theStr)
         if not ')' in theStr:
             raise SyntaxError("Paranthesis is not closed in %s" % theStr)
         func_name = theStr.split('(')[0].strip()
         if '=' in func_name:
             self.name = func_name.split('=')[0].strip().lstrip()
-            self.logger.debug("Found PDF name %s", self.name)
+            self.logger.debug("Found PF name %s", self.name)
             func_name = func_name.split('=')[1]
         if len(func_name.split()): func_name = func_name.split()[-1]
         if not func_name in scipy.stats.__all__:
@@ -293,15 +331,21 @@ class PDF(object):
                 raise SyntaxError("self.name is already set to %s" % self.name)
             self.name = kwargs['name']
         if not foundArgs and not 'func' in kwargs:
-            raise SyntaxError("You cannot declare a PDF without specifying a function to caracterize it.")
+            raise SyntaxError("You cannot declare a PF without specifying a function to caracterize it.")
         if 'func' in kwargs:
             if self.func != None:
                 raise SyntaxError("self.func already exists.")
             self.func = kwargs['func']
             if type(self.func) == list:
-                self.pdftype = PDF.DERIVED
+                self.pftype = PF.DERIVED
+                for ele in self.func:
+                    if not isinstance(ele, PF): continue
+                    for par in ele.params:
+                        if not par in self.params: self.params.append(par)
+                    for rv_name in ele._rvs:
+                        if not rv_name in self._rvs: self._rvs.append(rv_name)
             else:
-                self.pdftype = PDF.RAW
+                self.pftype = PF.RAW
         for param in self.params:
             if param.name in kwargs and kwargs[param.name] != param.value:
                 param.value = kwargs[param.name]
@@ -310,9 +354,9 @@ class PDF(object):
         return True
 
     def _declare(self,func_name,lpars):
-        # Declare functional form of PDF (no shape parameter specified yet)
+        # Declare functional form of PF (no shape parameter specified yet)
         self.func = getattr(scipy.stats,func_name)
-        self.pdftype = PDF.RAW
+        self.pftype = PF.RAW
         # Declare/Update parameters
         for parStr in lpars:
             parName = parStr.split('=')[0].strip().lstrip()
@@ -320,19 +364,19 @@ class PDF(object):
             if '=' in parStr:
                 parVal = float(parStr.split('=')[1].strip().lstrip())
             if not parName in _dparams:
-                _dparams[parName] = {'rvs':[],'pdfs':[]}
+                _dparams[parName] = {'rvs':[],'pfs':[]}
                 _dparams[parName]['obj'] = Param(name=parName,value=parVal)
             if self.name != None:
-                if not self.name in _dparams[parName]['pdfs']:
-                    _dparams[parName]['pdfs'].append(self.name)
+                if not self.name in _dparams[parName]['pfs']:
+                    _dparams[parName]['pfs'].append(self.name)
             else:
-                if not self in _dparams[parName]['pdfs']:
-                    _dparams[parName]['pdfs'].append(self)
+                if not self in _dparams[parName]['pfs']:
+                    _dparams[parName]['pfs'].append(self)
             self.params.append(_dparams[parName]['obj'])
         return
 
 class Param(object):
-    """Base class to define a PDF shape parameter. 
+    """Base class to define a PF shape parameter. 
 
        Two types of parameters can be built:
        - RAW parameters do not depend on any other parameter and have
@@ -607,7 +651,7 @@ class Param(object):
         if name in _dparams and 'obj' in _dparams[name]:
             self.logger.warning('%s already registred, remove existing info',
                                 name)
-        _dparams[name] = {'rvs':[],'pdfs':[],'params':[]}
+        _dparams[name] = {'rvs':[],'pfs':[],'params':[]}
         _dparams[name]['obj'] = self
         self.logger.debug('Register new Param: %s with value=%f, bounds=%s',
                           name,self.value,self.bounds)
@@ -676,14 +720,14 @@ def update_status(obj_dict):
     """Check the list of objects depending on this parameter and update
     their isuptodate status to False.
     """
-    for obj_key in ['rvs','pdfs','params']:
+    for obj_key in ['rvs','pfs','params']:
         if not obj_key in obj_dict: continue
         for obj in obj_dict[obj_key]:
             if hasattr(obj, "isuptodate"): obj.isuptodate = False
             if hasattr(obj, "name") and obj.name != None:
                 if obj_key == "rvs":
                     update_status(_drvs[obj.name])
-                if obj_key == "pdfs":
-                    update_status(_dpdfs[obj.name])
+                if obj_key == "pfs":
+                    update_status(_dpfs[obj.name])
                 if obj_key == "params":
                     update_status(_dparams[obj.name])
