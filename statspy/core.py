@@ -67,8 +67,8 @@ class RV(object):
 
         Parameters
         ----------
-        x : float
-            Random Variable value
+        x : float, ndarray
+            Random Variable value(s)
         kwargs : dictionary, optional
             Shape parameters values
 
@@ -169,8 +169,8 @@ class PF(object):
        logger : logging.Logger
            message logging system
 
-       Examples:
-       ---------
+       Examples
+       --------
        >>> import statspy as sp
        >>> pmf_n = sp.PF("poisson(n;mu)",mu=10.)
     """
@@ -249,16 +249,6 @@ class PF(object):
                     if rv_name in self.func[idx]._rvs:
                         the_args.append(rv_values[irv])
                 vals[idx-1] = self.func[idx](*the_args, **kwargs)
-            same_rvs = (len(self.func[1]._rvs) == len(self._rvs) and
-                        len(self.func[2]._rvs) == len(self._rvs))
-            #if (not same_rvs and isinstance(vals[0], np.ndarray) and
-            #    isinstance(vals[1], np.ndarray)):
-            #    # Matrix product
-            #    m1 = np.mat(vals[0])
-            #    m2 = np.mat(vals[1])
-            #    value = op(m1.T, m2)
-            #else:
-            #    # Array-like product
             value = op(vals[0],vals[1])
             return value
         #  - in case of a RAW PF, call directly the scipy function
@@ -285,6 +275,71 @@ class PF(object):
         except:
             raise
         return new
+
+    def leastsq_fit(self, xdata, ydata, free_params=None, ey=None):
+        """Fit the PF to data using a least squares method.
+
+        The fitting part is performed using the scipy.optimize.leastsq 
+        function. The Levenberg-Marquardt algorithm is used by the 'leastsq'
+        method to find the minimum values.
+
+        Parameters
+        ----------
+        xdata : ndarray
+            Values for which ydata are measured and PF must be computed
+        ydata : ndarray
+            Observed values (like number of events)
+        free_params : string list (optional)
+            List of parameters which are considered as free parameters in the
+            fit. If not specified all params are taken are free.
+        ey : ndarray
+            Standard deviations of ydata. If not specified, it takes
+            sqrt(ydata) as standard deviation.
+
+        Returns
+        -------
+        popt : array
+             Fitted values of the different free parameters
+        pcov : 2d array
+             Estimated covariance matrix of popt
+
+        """
+
+
+    def rvs(self, **kwargs):
+        """Get random variates from a PF
+
+        Keyword arguments
+        -----------------
+        size : int
+             Number of random variates
+        mu, sigma,... : float
+             Any parameter name used while declaring the PF
+
+        Returns
+        -------
+        data : ndarray
+             Array of random variates
+
+        Examples
+        --------
+        >>> import statspy as sp
+        >>> pdf_x = sp.PF("pdf_x=norm(x;mu=20,sigma=5)")
+        >>> data = pdf_x.rvs(size=1000)
+
+        """
+        try:
+            method_name = "rvs"
+            check_method_exists(obj=self.func,name=method_name)
+            shape_params = []
+            for param in self.params:
+                if param.name in kwargs:
+                    param.value = kwargs[param.name]
+                shape_params.append(param.value)
+            data = self.func.rvs(*shape_params, **kwargs)
+        except:
+            raise
+        return data
 
     def _check_args_syntax(self,args):
         if not len(args): return False
@@ -374,6 +429,14 @@ class PF(object):
                     _dparams[parName]['pfs'].append(self)
             self.params.append(_dparams[parName]['obj'])
         return
+
+    def _leastsq_function(params, xdata, ydata, weight):
+        """Function used by scipy.optimize.leastsq"""
+        # Update values of PF parameters
+        for ipar,par in enumerate(self._free_params):
+            par.value = params[ipar]
+        # Return delta = (PF(x) - y)/sigma
+        return weight * (self(xdata) - ydata)
 
 class Param(object):
     """Base class to define a PF shape parameter. 

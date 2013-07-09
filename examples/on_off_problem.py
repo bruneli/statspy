@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""on_off_problem
+"""on_off_problem.py
 
 This example compares Z values from various hypothesis tests performed
 when incorporating a systematic uncertainty into a test of the
@@ -26,13 +26,13 @@ tau = sp.Param(name='tau',value=5)
 # Derived quantities
 mu_on  = s + b # Total events expectation in the signal region
 mu_off = tau*b # Total events expectation in the control region
-mu_on.name  = 'mu_on'  # Parameters must be named to be recalled later via txt
+mu_on.name  = 'mu_on'  # Parameters must be named to be recalled later via str
 mu_off.name = 'mu_off'
 
 # Define the probability mass functions corresponding to n_on and n_off
-pdf_on  = sp.PF('pdf_on=poisson(n_on;mu_on)')
-pdf_off = sp.PF('pdf_off=poisson(n_off;mu_off)')
-likelihood = pdf_on * pdf_off
+pmf_on  = sp.PF('pmf_on=poisson(n_on;mu_on)')
+pmf_off = sp.PF('pmf_off=poisson(n_off;mu_off)')
+likelihood = pmf_on * pmf_off
 
 # 2D-histo of likelihood vs (n_on, n_off)
 x = y = np.arange(0, 20)
