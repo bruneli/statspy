@@ -8,9 +8,11 @@ the different variables, parameters and probability functions declared.
 """
 
 import logging
-import operator
+import math
 import numpy as np
+import operator
 import scipy.stats
+import scipy.optimize
 
 __all__ = ['RV','PF','Param','logger']
 
@@ -164,6 +166,9 @@ class PF(object):
            Probability Density Function object associated to a Random Variable
        params : statspy.core.Param list
            List of shape parameters used to define the pf
+       norm : Param
+           Normalization parameter set to 1 by default. It can be different
+           from 1 when the PF is fitted to data.
        isuptodate : bool
            Tells whether PF needs to be normalised or not
        logger : logging.Logger
@@ -182,9 +187,12 @@ class PF(object):
         self.name = None
         self.func = None
         self.params = []
+        self.norm = Param(value=1.)
         self.isuptodate = False
         self.logger = logging.getLogger('statspy.core.PF')
         self.pftype = PF.RAW
+        self._free_params = []
+        self._pcov = None
         self._rvs = []
         try:
             self.logger.debug('args = %s, kwargs = %s',args,kwargs)
@@ -195,8 +203,30 @@ class PF(object):
         except:
             raise
 
+    def __add__(self,other):
+        """Add two PFs.
+
+        The norm parameters are also summed.
+        
+        Parameters
+        ----------
+        self : PF
+        other : PF
+
+        Returns
+        -------
+        new : PF
+             new pf which is the sum of self and other
+        
+        """
+        try:
+            new = PF(func=[operator.add, self, other])
+        except:
+            raise
+        return new
+
     def __call__(self,*args,**kwargs):
-        """Evaluate Probability Density Function in x
+        """Evaluate Probability Function in x
 
         Parameters
         ----------
@@ -204,6 +234,11 @@ class PF(object):
             Random Variable value(s)
         kwargs : dictionary, optional
             Shape parameters values
+
+        Returns
+        -------
+        value : float, ndarray
+            Probability Function value(s) in x
 
         """
         # Check if self._pf contains a pdf() or a pmf() method
@@ -249,25 +284,25 @@ class PF(object):
                     if rv_name in self.func[idx]._rvs:
                         the_args.append(rv_values[irv])
                 vals[idx-1] = self.func[idx](*the_args, **kwargs)
-            value = op(vals[0],vals[1])
+            value = self.norm.value * op(vals[0],vals[1])
             return value
         #  - in case of a RAW PF, call directly the scipy function
         if method_name == 'pmf': 
-            return self.func.pmf(rv_values[0], *param_values)
-        return self.func.pdf(rv_values[0], *param_values)
+            return self.norm.value * self.func.pmf(rv_values[0], *param_values)
+        return self.norm.value * self.func.pdf(rv_values[0], *param_values)
 
     def __mul__(self,other):
-        """Multiply a pf by another pf.
+        """Multiply a PF by another PF.
         
-        Parameters
+        parameters
         ----------
         self : PF
         other : PF
 
-        Returns
+        returns
         -------
         new : PF
-             new pf which is the product of self and other
+            new PF which is the product of self and other
         
         """
         try:
@@ -276,12 +311,109 @@ class PF(object):
             raise
         return new
 
-    def leastsq_fit(self, xdata, ydata, free_params=None, ey=None):
+    def dF(self, x):
+        """Compute the uncertainty on PF given the uncertainty on the shape
+        and norm parameters.
+
+        This method can be used to show an error band on your fitted PF.
+        To compute the uncertainty on the PF, the error propagation formula is
+        used,
+            dF(x;th) = (F(x;th+dth) - F(x;th-dth))/2
+            dF(x)^2 = dF(x;th)^T * corr(th,th') * dF(x;th')
+        so keep in mind it is only an approximation.
+
+        parameters
+        ----------
+        x : float, ndarray
+            Random variate(s)
+
+        returns
+        -------
+        dF : float, ndarray
+            Uncertainty on the PF evaluated in x
+
+        """
+        # Get list of free parameters
+        self.get_list_free_params()
+        npars = len(self._free_params)
+        if npars == 0: return np.zeros(len(x))
+        popt = np.ndarray(npars)
+        punc = np.ndarray(npars)
+        for ipar,par in enumerate(self._free_params):
+            popt[ipar] = par.value
+            punc[ipar] = par.unc
+        # Build the correlation matrix
+        corr = np.ndarray((npars, npars))
+        if self._pcov != None:
+            if self._pcov.shape[0] != npars or self._pcov.shape[1] != npars:
+                raise SyntaxError('covariance matrix is not defined properly')
+            for ipar in range(npars):
+                for jpar in range(npars):
+                    corr[ipar][jpar] = self._pcov[ipar][jpar]
+                    if punc[ipar] != 0.: corr[ipar][jpar] /= punc[ipar]
+                    if punc[jpar] != 0.: corr[ipar][jpar] /= punc[jpar]
+        else:
+            corr = np.diag(np.ones(npars))
+        mcorr = np.asmatrix(corr)
+        # Compute dF(x;th)
+        if not isinstance(x, np.ndarray): x = np.asarray([x])
+        pf_plus  = None
+        pf_minus = None
+        for ipar in range(npars):
+            # theta -> theta + deltaTheta
+            (self._free_params[ipar]).value = popt[ipar] + punc[ipar]
+            y = self(x)
+            if pf_plus == None:
+                pf_plus = y
+            else:
+                pf_plus = np.vstack((pf_plus, y))
+            # theta -> theta - deltaTheta
+            (self._free_params[ipar]).value = popt[ipar] - punc[ipar]
+            y = self(x)
+            if pf_minus == None:
+                pf_minus = y
+            else:
+                pf_minus = np.vstack((pf_minus, y))
+        dF_th = np.asmatrix(0.5 * (pf_plus - pf_minus))
+        # Compute dF
+        dF = (dF_th.T * mcorr) * dF_th
+        return np.sqrt(np.diag(dF))
+
+    def get_list_free_params(self):
+        """Get the list of free parameters."""
+        self._free_params = []
+        # Get the list of normalization factors
+        if not self.norm.const and self.norm.partype == Param.RAW:
+            self._free_params.append(self.norm)
+        if self.pftype == PF.DERIVED and type(self.func) == list:
+            for ele in self.func:
+                if not isinstance(ele, PF): continue
+                if ele.norm.partype == Param.RAW and not ele.norm.const:
+                    self._free_params.append(ele.norm)
+                elif ele.norm.partype == Param.DERIVED:
+                    raw_params = ele.norm.get_raw_params()
+                    for raw_par in raw_params:
+                        if raw_par.const: continue
+                        self._free_params.append(raw_par)
+        # Get the list of shape parameters
+        for par in self.params:
+            if par.partype == Param.RAW and not par.const:
+                self._free_params.append(par)
+            elif par.partype == Param.DERIVED:
+                raw_params = par.get_raw_params()
+                for raw_par in raw_params:
+                    if raw_par.const: continue
+                    self._free_params.append(raw_par)
+        return self._free_params
+
+    def leastsq_fit(self, xdata, ydata, ey=None, dx=None, **kw):
         """Fit the PF to data using a least squares method.
 
         The fitting part is performed using the scipy.optimize.leastsq 
         function. The Levenberg-Marquardt algorithm is used by the 'leastsq'
         method to find the minimum values.
+        When calling this method, all PF parameters are minimized except
+        the one which are set as 'const'.
 
         Parameters
         ----------
@@ -289,22 +421,62 @@ class PF(object):
             Values for which ydata are measured and PF must be computed
         ydata : ndarray
             Observed values (like number of events)
-        free_params : string list (optional)
-            List of parameters which are considered as free parameters in the
-            fit. If not specified all params are taken are free.
-        ey : ndarray
+        ey : ndarray (optional)
             Standard deviations of ydata. If not specified, it takes
             sqrt(ydata) as standard deviation.
+        dx : ndarray (optional)
+            Array containing bin-width of xdata. It can be used to normalize
+            the PF to the integral while minimizing.
+        kw : keyword arguments
+            Keyword arguments passed to the leastsq method
 
         Returns
         -------
-        popt : array
-             Fitted values of the different free parameters
+        free_params : statspy.core.Param list
+             List of the free parameters used during the fit. Their 'value'
+             and 'unc' arguments are extracted from minimization.
         pcov : 2d array
-             Estimated covariance matrix of popt
+             Estimated covariance matrix of the free parameters.
+        chi2min : float
+             Least square sum evaluated in popt.
+        pvalue : float
+             p-value = P(chi2>chi2min,ndf) with P a chi2 distribution and
+             ndf the number of degrees of freedom.
 
         """
-
+        # Define parameters which should be minimized and set initial values
+        self.get_list_free_params()
+        p0 = np.ones(len(self._free_params))
+        for ipar,par in enumerate(self._free_params):
+             p0[ipar] = par.value
+        # Compute weights
+        if ey == None: ey = np.sqrt(ydata)
+        ey[ey == 0] = 1.
+        weight = 1./np.asarray(ey)
+        # Call the leastsq method
+        if dx == None: dx = np.ones(xdata.shape)
+        args = (xdata, ydata, weight, dx)
+        res = scipy.optimize.leastsq(self._leastsq_function, p0,
+                                     args=args, full_output=1, **kw)
+        # Manage results
+        (popt, self._pcov, infodict, errmsg, ier) = res
+        if ier not in [1,2,3,4]:
+            msg = "Optimal parameters not found: " + errmsg
+            raise RuntimeError(msg)
+        chi2min = (self._leastsq_function(popt, *args)**2).sum()
+        if (len(ydata) > len(p0)) and self._pcov is not None:
+            ndf = len(ydata)-len(p0)
+            self._pcov = self._pcov * chi2min / ndf
+            pvalue = scipy.stats.chi2.sf(chi2min, ndf)
+            for ipar,par in enumerate(self._free_params):
+                if (self._pcov)[ipar][ipar] >= 0.:
+                    par.unc = math.sqrt((self._pcov)[ipar][ipar])
+        else:
+            self._pcov = inf
+            pvalue = inf
+        for ipar,par in enumerate(self._free_params):
+            par.value = popt[ipar]
+        return self._free_params, self._pcov, chi2min, pvalue
 
     def rvs(self, **kwargs):
         """Get random variates from a PF
@@ -354,6 +526,7 @@ class PF(object):
         func_name = theStr.split('(')[0].strip()
         if '=' in func_name:
             self.name = func_name.split('=')[0].strip().lstrip()
+            self.norm.name = 'norm_%s' % self.name
             self.logger.debug("Found PF name %s", self.name)
             func_name = func_name.split('=')[1]
         if len(func_name.split()): func_name = func_name.split()[-1]
@@ -385,6 +558,7 @@ class PF(object):
             if self.name != None:
                 raise SyntaxError("self.name is already set to %s" % self.name)
             self.name = kwargs['name']
+            self.norm.name = 'norm_%s' % self.name
         if not foundArgs and not 'func' in kwargs:
             raise SyntaxError("You cannot declare a PF without specifying a function to caracterize it.")
         if 'func' in kwargs:
@@ -430,13 +604,13 @@ class PF(object):
             self.params.append(_dparams[parName]['obj'])
         return
 
-    def _leastsq_function(params, xdata, ydata, weight):
+    def _leastsq_function(self, params, xdata, ydata, weight, dx):
         """Function used by scipy.optimize.leastsq"""
-        # Update values of PF parameters
+        # Update values of non-const PF parameters
         for ipar,par in enumerate(self._free_params):
             par.value = params[ipar]
         # Return delta = (PF(x) - y)/sigma
-        return weight * (self(xdata) - ydata)
+        return weight * (self(xdata) * dx - ydata)
 
 class Param(object):
     """Base class to define a PF shape parameter. 
@@ -453,6 +627,8 @@ class Param(object):
            Random Variable name
        value : float
            Current numerical value
+       unc : float
+           Parameter uncertainty (e.g. after minimization)
        bounds : list
            Defines, if necessary, the lower and upper bounds
        formula : list (optional, only for DERIVED parameters)
@@ -461,26 +637,31 @@ class Param(object):
            Representation of the formula as a string
        partype : int
            Tells whether it is a RAW or a DERIVED parameter
+       const : bool
+           Tells whether a parameter is fixed during a minimazation process.
+           It is not a constant in the sense of C++.
        isuptodate : bool
            Tells whether value needs to be computed again or not
        logger : logging.Logger
            message logging system
 
-       Examples:
-       ---------
-       >>> import statspy as spy 
-       >>> mu = spy.Param(name="mu",value=10.)
+       Examples
+       --------
+       >>> import statspy as sp 
+       >>> mu = sp.Param(name="mu",value=10.)
     """
 
     # Define the different parameter types
     (RAW,DERIVED) = (0,10)
 
     def __init__(self,*args,**kwargs):
-        self.name    = kwargs.get('name',None)
-        self.value   = kwargs.get('value',0.)
-        self.bounds  = kwargs.get('bounds',[])
-        self.formula = kwargs.get('formula',None)
-        self.strform = kwargs.get('strform',None)
+        self.name    = kwargs.get('name', None)
+        self.value   = kwargs.get('value', 0.)
+        self.unc     = kwargs.get('unc', 0.)
+        self.bounds  = kwargs.get('bounds', [])
+        self.formula = kwargs.get('formula', None)
+        self.strform = kwargs.get('strform', None)
+        self.const   = kwargs.get('const', False)
         self.partype = Param.RAW
         self.isuptodate = True
         self.logger  = logging.getLogger('statspy.core.Param')
@@ -649,7 +830,7 @@ class Param(object):
         """Subtract a numerical value to a parameter"""
         try:
             new = Param(formula=[[operator.sub, other, self]],
-                        strform=Param._build_str_formula(other,'/',self))
+                        strform=Param._build_str_formula(other,'-',self))
         except:
             raise
         return new
@@ -686,6 +867,19 @@ class Param(object):
         except:
             raise
         return new
+
+    def get_raw_params(self):
+        raw_params = []
+        if self.partype != Param.DERIVED: return raw_params
+        if self.func == None or type(self.func) != list:
+            return raw_params
+        for ele in self.func:
+            if not isinstance(ele, Param): continue
+            if ele.partype == Param.RAW:
+                raw_params.append(ele)
+            elif ele.partype == Param.DERIVED:
+                raw_params += ele.get_raw_params()
+        return raw_params
 
     def _evaluate(self):
         if self.partype != Param.DERIVED: return
