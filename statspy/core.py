@@ -220,6 +220,38 @@ class PF(object):
         
         """
         try:
+            self_params  = self._get_add_norm_params()
+            other_params = other._get_add_norm_params()
+            add_params = self_params + other_params
+            frac0 = 1./len(add_params)
+            first = True
+            for ipar,add_param in enumerate(add_params):
+                if not ipar: continue
+                if add_param.norm.partype == Param.RAW:
+                    add_param.norm.value = frac0
+                else:
+                    add_param.norm = Param(value=frac0)
+                    if add_param.name != None:
+                        add_param.name = 'norm_%s' % add_param.name
+                if first:
+                    add_params[0].norm = 1. - add_param.norm
+                    first = False
+                else:
+                    add_params[0].norm -= add_param.norm
+            if add_params[0].name != None:
+                add_params[0].norm.name = 'norm_%s' % add_params[0].name
+            for ele in [self_params, other_params]:
+                if len(ele) < 2: continue
+                first = True
+                for ipar,add_param in enumerate(ele):
+                    if ipar == 0: continue
+                    if first:
+                        ele.norm = ele[0].norm + add_param.norm
+                        first = False
+                    else:
+                        ele.norm += add_param.norm
+                if ele.name != None:
+                    ele.norm.name = 'norm_%s' % ele.name
             new = PF(func=[operator.add, self, other])
         except:
             raise
@@ -513,7 +545,7 @@ class PF(object):
             raise
         return data
 
-    def _check_args_syntax(self,args):
+    def _check_args_syntax(self, args):
         if not len(args): return False
         if not isinstance(args[0],str):
             raise SyntaxError("If an argument is passed to PF without a keyword, it must be a string.")
@@ -552,7 +584,7 @@ class PF(object):
         self._declare(func_name,lpars)
         return True
 
-    def _check_kwargs_syntax(self,kwargs,foundArgs):
+    def _check_kwargs_syntax(self, kwargs, foundArgs):
         if not len(kwargs): return False
         if 'name' in kwargs:
             if self.name != None:
@@ -582,7 +614,7 @@ class PF(object):
                                   param.name,param.value)
         return True
 
-    def _declare(self,func_name,lpars):
+    def _declare(self, func_name, lpars):
         # Declare functional form of PF (no shape parameter specified yet)
         self.func = getattr(scipy.stats,func_name)
         self.pftype = PF.RAW
@@ -603,6 +635,16 @@ class PF(object):
                     _dparams[parName]['pfs'].append(self)
             self.params.append(_dparams[parName]['obj'])
         return
+
+    def _get_add_norm_params(self):
+        norm_params = []
+        if self.pftype == PF.DERIVED and self.func[0] == operator.add:
+            for ele in self.func:
+                if not isinstance(ele, PF): continue
+                raw_norm_params += ele._get_add_norm_params()
+        elif self.norm.pftype == PF.RAW and not self.norm.const:
+            norm_params.append(pf)
+        return norm_params
 
     def _leastsq_function(self, params, xdata, ydata, weight, dx):
         """Function used by scipy.optimize.leastsq"""
@@ -740,6 +782,81 @@ class Param(object):
         except:
             raise
         return object.__getattribute__(self, name)
+
+    def __iadd__(self,other):
+        """In-place addition (+=)
+        
+        Parameters
+        ----------
+        self : Param
+        other : Param, int, long, float
+
+        Returns
+        -------
+        sef : Param
+             self parameter modified by other
+        
+        """
+        try:
+            if self.partype == Param.RAW:
+                self.partype = Param.DERIVED
+                self.isuptodate = False
+                self.formula = []
+            self.formula.append([operator.add, self, other])
+            self.strform = Param._build_str_formula(self,'+',other)
+        except:
+            raise
+        return self
+
+    def __imul__(self,other):
+        """In-place multiplication (*=)
+        
+        Parameters
+        ----------
+        self : Param
+        other : Param, int, long, float
+
+        Returns
+        -------
+        sef : Param
+             self parameter modified by other
+        
+        """
+        try:
+            if self.partype == Param.RAW:
+                self.partype = Param.DERIVED
+                self.isuptodate = False
+                self.formula = []
+            self.formula.append([operator.mul, self, other])
+            self.strform = Param._build_str_formula(self,'*',other)
+        except:
+            raise
+        return self
+
+    def __isub__(self,other):
+        """In-place subtraction (-=)
+        
+        Parameters
+        ----------
+        self : Param
+        other : Param, int, long, float
+
+        Returns
+        -------
+        sef : Param
+             self parameter modified by other
+        
+        """
+        try:
+            if self.partype == Param.RAW:
+                self.partype = Param.DERIVED
+                self.isuptodate = False
+                self.formula = []
+            self.formula.append([operator.sub, self, other])
+            self.strform = Param._build_str_formula(self,'-',other)
+        except:
+            raise
+        return self
 
     def __mul__(self,other):
         """Multiply a parameter by another parameter or by a numerical value.
@@ -884,22 +1001,30 @@ class Param(object):
     def _evaluate(self):
         if self.partype != Param.DERIVED: return
         if type(self.formula) != list: return
+        value = 0.
         for op in self.formula:
             if isinstance(op, list):
                 if len(op) == 3:
-                    val1 = op[1].value if isinstance(op[1], Param) else op[1]
+                    if isinstance(op[1], Param):
+                        val1 = value if op[1] == self else op[1].value 
+                    else:
+                        val1 = op[1]
                     val2 = op[2].value if isinstance(op[2], Param) else op[2]
-                    self.value = op[0](val1, val2)
+                    value = op[0](val1, val2)
                 elif len(op) == 2 and isinstance(op[1], Param):
-                    self.value = op[0](op[1].value)
+                    if op[1] == self:
+                        value = op[0](value)
+                    else:
+                        value = op[0](op[1].value)
                 elif len(op) == 1 and isinstance(op[0], Param):
-                    self.value = op[0].value
+                    value = op[0].value
                 else:
                     raise TypeError('operation is not recognized')
             elif isinstance(op, Param):
                 self.value = op.value
             else:
                 raise TypeError('operation type is not recognized')
+            self.value = value
         self.isuptodate = True
         return
 

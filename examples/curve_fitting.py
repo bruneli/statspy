@@ -33,7 +33,7 @@ dx = bins[1:] - bins[:-1]        # Bin widths
 # Least square fit to the data
 params, pcov, chi2min, pvalue = pdf_fit.leastsq_fit(xdata, ydata, dx=dx)
 yfit  = pdf_fit(xdata) * dx
-eyfit = pdf_fit.dF(xdata) * dx
+eyfit = pdf_fit.dF(xdata) * dx # Get error bars on the fitted PF
 ax.plot(xdata, yfit, 'r--', linewidth=2, label='Fitted PF')
 ax.fill_between(xdata, yfit-eyfit, yfit+eyfit, facecolor='y')
 ax.plot(xdata, pdf_true(xdata) * dx * nexp, 'b:', linewidth=2, label='True PF')
