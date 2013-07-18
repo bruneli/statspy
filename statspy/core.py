@@ -438,7 +438,7 @@ class PF(object):
                     self._free_params.append(raw_par)
         return self._free_params
 
-    def leastsq_fit(self, xdata, ydata, ey=None, dx=None, **kw):
+    def leastsq_fit(self, xdata, ydata, ey=None, dx=None, cond=None, **kw):
         """Fit the PF to data using a least squares method.
 
         The fitting part is performed using the scipy.optimize.leastsq 
@@ -459,6 +459,8 @@ class PF(object):
         dx : ndarray (optional)
             Array containing bin-width of xdata. It can be used to normalize
             the PF to the integral while minimizing.
+        cond : boolean ndarray (optional)
+            Boolean array telling if a bin should be used in the fit or not
         kw : keyword arguments
             Keyword arguments passed to the leastsq method
 
@@ -480,11 +482,14 @@ class PF(object):
         self.get_list_free_params()
         p0 = np.ones(len(self._free_params))
         for ipar,par in enumerate(self._free_params):
-             p0[ipar] = par.value
+             p0[ipar] = par.unbound_repr()
         # Compute weights
         if ey == None: ey = np.sqrt(ydata)
         ey[ey == 0] = 1.
-        weight = 1./np.asarray(ey)
+        if cond == None:
+            weight = 1./np.asarray(ey)
+        else:
+            weight = cond/np.asarray(ey)
         # Call the leastsq method
         if dx == None: dx = np.ones(xdata.shape)
         args = (xdata, ydata, weight, dx)
@@ -500,14 +505,15 @@ class PF(object):
             ndf = len(ydata)-len(p0)
             self._pcov = self._pcov * chi2min / ndf
             pvalue = scipy.stats.chi2.sf(chi2min, ndf)
+            ## TODO, parameter uncertainty incorrect for bounded parameters
             for ipar,par in enumerate(self._free_params):
                 if (self._pcov)[ipar][ipar] >= 0.:
                     par.unc = math.sqrt((self._pcov)[ipar][ipar])
         else:
-            self._pcov = inf
-            pvalue = inf
+            self._pcov = np.inf
+            pvalue = np.inf
         for ipar,par in enumerate(self._free_params):
-            par.value = popt[ipar]
+            par.unbound_to_bound(popt[ipar])
         return self._free_params, self._pcov, chi2min, pvalue
 
     def rvs(self, **kwargs):
@@ -533,14 +539,24 @@ class PF(object):
 
         """
         try:
-            method_name = "rvs"
-            check_method_exists(obj=self.func,name=method_name)
-            shape_params = []
-            for param in self.params:
-                if param.name in kwargs:
-                    param.value = kwargs[param.name]
-                shape_params.append(param.value)
-            data = self.func.rvs(*shape_params, **kwargs)
+            if isinstance(self.func, list):
+                if len(self.func) == 3 and self.func[0] == operator.add:
+                    data1 = self.func[1].rvs(**kwargs)
+                    data2 = self.func[2].rvs(**kwargs)
+                    data3 = scipy.stats.uniform(size=len(data1))
+                    cond = (data3 < self.func[1].norm.value)
+                    data = cond * data1 + (1 - cond) * data2
+                else:
+                    raise NotImplementedError('Not yet possible...')
+            else:
+                method_name = "rvs"
+                check_method_exists(obj=self.func,name=method_name)
+                shape_params = []
+                for param in self.params:
+                    if param.name in kwargs:
+                        param.value = kwargs[param.name]
+                    shape_params.append(param.value)
+                data = self.func.rvs(*shape_params, **kwargs)
         except:
             raise
         return data
@@ -650,7 +666,7 @@ class PF(object):
         """Function used by scipy.optimize.leastsq"""
         # Update values of non-const PF parameters
         for ipar,par in enumerate(self._free_params):
-            par.value = params[ipar]
+            par.unbound_to_bound(params[ipar])
         # Return delta = (PF(x) - y)/sigma
         return weight * (self(xdata) * dx - ydata)
 
@@ -986,6 +1002,7 @@ class Param(object):
         return new
 
     def get_raw_params(self):
+        """Get the list of RAW parameters from a DERIVED parameter"""
         raw_params = []
         if self.partype != Param.DERIVED: return raw_params
         if self.func == None or type(self.func) != list:
@@ -997,6 +1014,68 @@ class Param(object):
             elif ele.partype == Param.DERIVED:
                 raw_params += ele.get_raw_params()
         return raw_params
+
+    def unbound_repr(self):
+        """Transform the value of the parameter such as it has no bounds.
+
+        This method is used with the minimization algorithms which require
+        only unbound parameters. The transformation formula from a
+        double-sided or a one-sided parameter to an unbound parameter are 
+        described in Section 1.3.1 of the MINUIT manual:
+        Fred James, Matthias Winkler, MINUIT User's Guide, June 16, 2004.
+
+        Returns
+        -------
+        new : float
+            parameter value within an unbound representation.
+
+        """
+        new = self.value
+        if len(self.bounds) != 2: return new # Parameter has no bounds
+        a = self.bounds[0]
+        b = self.bounds[1]
+        if a != None and b != None:
+            # Parameter with double-sided limits
+            new = math.asin(2 * (new - a) / (b - a) - 1)
+        elif a != None:
+            # Parameter with a lower bound
+            new = math.sqrt((new - a + 1) * (new - a + 1) - 1)
+        elif b != None:
+            # Parameter with an upper bound
+            new = math.sqrt((b - new + 1) * (b - new + 1) - 1)
+        return new
+
+    def unbound_to_bound(self, val):
+        """Transform the parameter value from an unbound to a bounded 
+        representation.
+
+        This method is used with the minimization algorithms which require
+        only unbound parameters. The transformation formula from an unbound
+        parameter to a double-sided or a one-sided parameter are described in
+        Section 1.3.1 of the MINUIT manual:
+        Fred James, Matthias Winkler, MINUIT User's Guide, June 16, 2004.
+
+        Parameters
+        ----------
+        val : float
+            parameter value within an unbound representation.
+
+        """
+        if len(self.bounds) != 2:
+            self.value = val
+            return self.value # Parameter has no bounds
+        a = self.bounds[0]
+        b = self.bounds[1]
+        if a != None and b != None:
+            # Parameter with double-sided limits
+            self.value = a + (b - a) / 2 * (math.sin(val) + 1)
+        elif a != None:
+            # Parameter with a lower bound
+            self.value = a - 1 + math.sqrt(val * val + 1)
+        elif b != None:
+            # Parameter with an upper bound
+            self.value = b + 1 - math.sqrt(val * val + 1)
+        return self.value
 
     def _evaluate(self):
         if self.partype != Param.DERIVED: return
