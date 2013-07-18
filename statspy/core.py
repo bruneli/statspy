@@ -658,8 +658,8 @@ class PF(object):
             for ele in self.func:
                 if not isinstance(ele, PF): continue
                 raw_norm_params += ele._get_add_norm_params()
-        elif self.norm.pftype == PF.RAW and not self.norm.const:
-            norm_params.append(pf)
+        elif self.norm.partype == PF.RAW and not self.norm.const:
+            norm_params.append(self)
         return norm_params
 
     def _leastsq_function(self, params, xdata, ydata, weight, dx):
