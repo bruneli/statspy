@@ -692,6 +692,8 @@ class Param(object):
        ----------
        name : str
            Random Variable name
+       label : str
+           Random Variable name for printing purposes
        value : float
            Current numerical value
        unc : float
@@ -723,6 +725,7 @@ class Param(object):
 
     def __init__(self,*args,**kwargs):
         self.name    = kwargs.get('name', None)
+        self.label   = kwargs.get('name', self.name)
         self.value   = kwargs.get('value', 0.)
         self.unc     = kwargs.get('unc', 0.)
         self.bounds  = kwargs.get('bounds', [])
