@@ -14,7 +14,7 @@ import operator
 import scipy.stats
 import scipy.optimize
 
-__all__ = ['RV','PF','Param','logger']
+__all__ = ['RV','PF','Param','logger','get_obj']
 
 _drvs    = {}  # Dictionary hosting the list of random variables
 _dpfs    = {}  # Dictionary hosting the list of probability functions
@@ -220,6 +220,7 @@ class PF(object):
         
         """
         try:
+            norm0 = [self.norm.value, other.norm.value]
             self_params  = self._get_add_norm_params()
             other_params = other._get_add_norm_params()
             add_params = self_params + other_params
@@ -229,8 +230,9 @@ class PF(object):
                 if not ipar: continue
                 if add_param.norm.partype == Param.RAW:
                     add_param.norm.value = frac0
+                    add_param.norm.bounds = [0., 1.]
                 else:
-                    add_param.norm = Param(value=frac0)
+                    add_param.norm = Param(value=frac0, bounds=[0., 1.])
                     if add_param.name != None:
                         add_param.name = 'norm_%s' % add_param.name
                 if first:
@@ -253,6 +255,8 @@ class PF(object):
                 if ele.name != None:
                     ele.norm.name = 'norm_%s' % ele.name
             new = PF(func=[operator.add, self, other])
+            if norm0[0] != 1 or norm0[1] != 1:
+                new.norm.value = norm0[0] + norm0[1]
         except:
             raise
         return new
@@ -320,7 +324,8 @@ class PF(object):
             return value
         #  - in case of a RAW PF, call directly the scipy function
         if method_name == 'pmf': 
-            return self.norm.value * self.func.pmf(rv_values[0], *param_values)
+            return self.norm.value * self.func.pmf(rv_values[0],
+                                                   *param_values)
         return self.norm.value * self.func.pdf(rv_values[0], *param_values)
 
     def __mul__(self,other):
@@ -505,15 +510,18 @@ class PF(object):
             ndf = len(ydata)-len(p0)
             self._pcov = self._pcov * chi2min / ndf
             pvalue = scipy.stats.chi2.sf(chi2min, ndf)
-            ## TODO, parameter uncertainty incorrect for bounded parameters
             for ipar,par in enumerate(self._free_params):
+                unc = 0.
                 if (self._pcov)[ipar][ipar] >= 0.:
-                    par.unc = math.sqrt((self._pcov)[ipar][ipar])
+                    unc = math.sqrt((self._pcov)[ipar][ipar])
+                val2, unc2 = par.unbound_to_bound(popt[ipar], unc)
+                for jpar in range(len(self._free_params)):
+                    if unc == 0.: continue
+                    self._pcov[ipar][jpar] *= (unc2 / unc)
+                    self._pcov[jpar][ipar] *= (unc2 / unc)
         else:
             self._pcov = np.inf
             pvalue = np.inf
-        for ipar,par in enumerate(self._free_params):
-            par.unbound_to_bound(popt[ipar])
         return self._free_params, self._pcov, chi2min, pvalue
 
     def rvs(self, **kwargs):
@@ -543,7 +551,7 @@ class PF(object):
                 if len(self.func) == 3 and self.func[0] == operator.add:
                     data1 = self.func[1].rvs(**kwargs)
                     data2 = self.func[2].rvs(**kwargs)
-                    data3 = scipy.stats.uniform(size=len(data1))
+                    data3 = scipy.stats.uniform.rvs(size=len(data1))
                     cond = (data3 < self.func[1].norm.value)
                     data = cond * data1 + (1 - cond) * data2
                 else:
@@ -668,7 +676,8 @@ class PF(object):
         for ipar,par in enumerate(self._free_params):
             par.unbound_to_bound(params[ipar])
         # Return delta = (PF(x) - y)/sigma
-        return weight * (self(xdata) * dx - ydata)
+        delta = weight * (self(xdata) * dx - ydata)
+        return delta
 
 class Param(object):
     """Base class to define a PF shape parameter. 
@@ -1005,9 +1014,9 @@ class Param(object):
         """Get the list of RAW parameters from a DERIVED parameter"""
         raw_params = []
         if self.partype != Param.DERIVED: return raw_params
-        if self.func == None or type(self.func) != list:
+        if self.formula == None or type(self.formula) != list:
             return raw_params
-        for ele in self.func:
+        for ele in self.formula:
             if not isinstance(ele, Param): continue
             if ele.partype == Param.RAW:
                 raw_params.append(ele)
@@ -1045,7 +1054,7 @@ class Param(object):
             new = math.sqrt((b - new + 1) * (b - new + 1) - 1)
         return new
 
-    def unbound_to_bound(self, val):
+    def unbound_to_bound(self, val, unc = 0.):
         """Transform the parameter value from an unbound to a bounded 
         representation.
 
@@ -1054,28 +1063,39 @@ class Param(object):
         parameter to a double-sided or a one-sided parameter are described in
         Section 1.3.1 of the MINUIT manual:
         Fred James, Matthias Winkler, MINUIT User's Guide, June 16, 2004.
+        Since the transformation is non-linear, the transformation of the
+        uncertainty is approximate and based on the error propagation 
+        formula. In particular, when the value is close to its limit, the
+        uncertainty is not trustable and a more refined analysis should be 
+        performed.
 
         Parameters
         ----------
         val : float
-            parameter value within an unbound representation.
+            parameter value within an unbound representation
+        unc : float
+            parameter uncertainty within an unbound representation
 
         """
         if len(self.bounds) != 2:
             self.value = val
-            return self.value # Parameter has no bounds
+            self.unc   = unc
+            return self.value, self.unc # Parameter has no bounds
         a = self.bounds[0]
         b = self.bounds[1]
         if a != None and b != None:
             # Parameter with double-sided limits
             self.value = a + (b - a) / 2 * (math.sin(val) + 1)
+            self.unc   = math.fabs((b - a) / 2 * math.cos(val) * unc)
         elif a != None:
             # Parameter with a lower bound
             self.value = a - 1 + math.sqrt(val * val + 1)
+            self.unc   = val / math.sqrt(val * val + 1) * unc
         elif b != None:
             # Parameter with an upper bound
             self.value = b + 1 - math.sqrt(val * val + 1)
-        return self.value
+            self.unc   = val / math.sqrt(val * val + 1) * unc
+        return self.value, self.unc
 
     def _evaluate(self):
         if self.partype != Param.DERIVED: return
@@ -1176,7 +1196,19 @@ def check_method_exists(obj=None,name=""):
         not callable(getattr(obj,name))):
         raise StandardError('No %s() method found.' % name)
     return True
- 
+
+def get_obj(obj_name):
+    """Look in the different dictionaries if an object named obj_name exists
+    and return it."""
+    obj = None
+    for obj_dict in (_drvs, _dpfs, _dparams):
+        if not obj_name in obj_dict: continue
+        if obj != None:
+            logger.warning('%s is found multiple times !' % obj_name)
+        logger.debug('%s has been found in %s' % (obj_name, obj_dict))
+        obj = obj_dict[obj_name]['obj']
+    return obj
+
 def update_status(obj_dict):
     """Check the list of objects depending on this parameter and update
     their isuptodate status to False.
