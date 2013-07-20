@@ -229,7 +229,8 @@ class PF(object):
             for ipar,add_param in enumerate(add_params):
                 if not ipar: continue
                 if add_param.norm.partype == Param.RAW:
-                    add_param.norm.value = frac0
+                    if add_param.norm.value >= 1.:
+                        add_param.norm.value = frac0
                     add_param.norm.bounds = [0., 1.]
                 else:
                     add_param.norm = Param(value=frac0, bounds=[0., 1.])
@@ -347,6 +348,26 @@ class PF(object):
         except:
             raise
         return new
+
+    def __rmul__(self, scale):
+        """Scale PF normalization value
+        
+        parameters
+        ----------
+        self : PF
+        scale : float
+
+        returns
+        -------
+        self : PF
+            original PF with self.norm.value *= scale
+        
+        """
+        try:
+            self.norm.value *= scale
+        except:
+            raise
+        return self
 
     def dF(self, x):
         """Compute the uncertainty on PF given the uncertainty on the shape

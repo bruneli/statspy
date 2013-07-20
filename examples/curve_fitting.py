@@ -11,11 +11,10 @@ import numpy as np
 import statspy as sp
 import scipy.stats
 
-# Define the true PDF
+# Define the true PDF (gaussian signal on top of an exponentially falling bkg)
 pdf_true_sig = sp.PF("pdf_true_sig=norm(x;mu_true=125,sigma_true=10)")
 pdf_true_bkg = sp.PF("pdf_true_bkg=expon(x;offset_true=50,lambda_true=20)")
-pdf_true = pdf_true_sig + pdf_true_bkg
-pdf_true_bkg.norm.value = 0.95
+pdf_true = 0.95 * pdf_true_bkg + 0.05 * pdf_true_sig
 # Sample data from the true PDF
 nexp = 10000 # number of expected events
 nobs = scipy.stats.poisson.rvs(nexp, size=1)
@@ -31,18 +30,16 @@ ydata, bins, patches = ax.hist(data, 30, range=[50, 200], log=True,
 xdata = 0.5*(bins[1:]+bins[:-1]) # Bin centers
 dx = bins[1:] - bins[:-1]        # Bin widths
 
-# Define the background PF and fit it to data in side bands
+# Define the background and signal PFs
 pdf_fit_bkg = sp.PF("pdf_fit_bkg=expon(x;offset=50,lambda=10)")
 sp.get_obj("lambda").label = "\\lambda"
 offset = sp.get_obj('offset')
 offset.const = True # Fix parameter value
-pdf_fit_bkg.norm.value = nobs
-sidebands = np.logical_or((xdata < 100), (xdata > 150))
-pdf_fit_bkg.leastsq_fit(xdata, ydata, dx=dx, cond=sidebands)
-
-# Define the background+signal PF
+#pdf_fit_bkg.norm.value = nobs
+#sidebands = np.logical_or((xdata < 100), (xdata > 150))
+#pdf_fit_bkg.leastsq_fit(xdata, ydata, dx=dx, cond=sidebands)
 pdf_fit_sig = sp.PF("pdf_fit_sig=norm(x;mu=120,sigma=20)")
-sp.get_obj("mu").label = "\\mu"
+sp.get_obj("mu").label    = "\\mu"
 sp.get_obj("sigma").label = "\\sigma"
 pdf_fit = pdf_fit_bkg + pdf_fit_sig
 pdf_fit.name = 'pdf_fit'
@@ -60,6 +57,7 @@ ax.plot(xdata, pdf_true(xdata) * dx * nexp, 'b:', linewidth=2, label='True PF')
 # Plot
 ax.set_xlabel('x')
 ax.set_ylabel('Evts / %3.2f' % dx[0])
+ax.set_xlim(50, 200)
 ax.set_ylim(0.1, nexp)
 handles, labels = ax.get_legend_handles_labels()
 ax.legend(handles[::-1], labels[::-1])
