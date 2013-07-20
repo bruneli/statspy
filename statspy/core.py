@@ -545,6 +545,43 @@ class PF(object):
             pvalue = np.inf
         return self._free_params, self._pcov, chi2min, pvalue
 
+    def maxlikelihood_fit(self, data, **kwargs):
+        """Fit the PF to data using the maximum likelihood estimator method.
+
+        The fitting part is performed using one of the scipy.optimize 
+        minimization function. By default scipy.optimize.fmin is used, i.e.
+        the downhill simplex algorithm.
+        When calling this method, all PF parameters are minimized except
+        the one which are set as 'const' before calling the method.
+
+        Parameters
+        ----------
+        data : ndarray, tuple
+            Data used in the computation of the (log-)likelihood function
+        kw : keyword arguments (optional)
+            Keyword arguments such as
+
+            optimizer : scipy.optimize
+                Function performing the minimization. A list of minimizer is 
+                available from scipy.optimize. If you provide your own, the
+                callable function must be defined with func and x0 as the first
+                two arguments. Data are passed via the args. 
+
+        Returns
+        -------
+        free_params : statspy.core.Param list
+             List of the free parameters used during the fit. Their 'value'
+             arguments are extracted from the minimization process.
+
+        """
+        # Define parameters which should be minimized and set initial values
+        self.get_list_free_params()
+        p0 = np.ones(len(self._free_params))
+        for ipar,par in enumerate(self._free_params):
+             p0[ipar] = par.unbound_repr()
+
+        return self._free_params
+
     def rvs(self, **kwargs):
         """Get random variates from a PF
 
