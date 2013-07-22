@@ -18,11 +18,11 @@ from matplotlib import ticker
 
 # Define the different parameters of the problem
 # Parameter of interest:
-s = sp.Param(name='s',value=0) # Signal expectation in the signal region
+s = sp.Param(name='s', value=0) # Signal expectation in the signal region
 # Nuisance parameter:
-b = sp.Param(name='b',value=1) # Background expectation in the signal region
+b = sp.Param(name='b', value=1) # Background expectation in the signal region
 # Transfer factor between the control and signal regions (constant)
-tau = sp.Param(name='tau',value=5)
+tau = sp.Param(name='tau', value=5, const=True)
 # Derived quantities
 mu_on  = s + b # Total events expectation in the signal region
 mu_off = tau*b # Total events expectation in the control region
@@ -33,6 +33,9 @@ mu_off.name = 'mu_off'
 pmf_on  = sp.PF('pmf_on=poisson(n_on;mu_on)')
 pmf_off = sp.PF('pmf_off=poisson(n_off;mu_off)')
 likelihood = pmf_on * pmf_off
+data = (pmf_on.rvs(size=1), pmf_off.rvs(size=1))
+print 'data',data
+likelihood.maxlikelihood_fit(data)
 
 # 2D-histo of likelihood vs (n_on, n_off)
 x = y = np.arange(0, 20)

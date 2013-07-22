@@ -262,14 +262,14 @@ class PF(object):
             raise
         return new
 
-    def __call__(self,*args,**kwargs):
+    def __call__(self, *args, **kwargs):
         """Evaluate Probability Function in x
 
         Parameters
         ----------
         args : float, ndarray, optional, multiple values for multivariate pfs
-            Random Variable value(s)
-        kwargs : dictionary, optional
+            Random Variable(s) value(s)
+        kwargs : keywork arguments, optional
             Shape parameters values
 
         Returns
@@ -278,7 +278,7 @@ class PF(object):
             Probability Function value(s) in x
 
         """
-        # Check if self._pf contains a pdf() or a pmf() method
+        # Check if self.func contains a pdf() or a pmf() method
         if self.pftype == PF.RAW:
             method_name = 'pdf'
             try:
@@ -329,7 +329,7 @@ class PF(object):
                                                    *param_values)
         return self.norm.value * self.func.pdf(rv_values[0], *param_values)
 
-    def __mul__(self,other):
+    def __mul__(self, other):
         """Multiply a PF by another PF.
         
         parameters
@@ -461,6 +461,7 @@ class PF(object):
                 raw_params = par.get_raw_params()
                 for raw_par in raw_params:
                     if raw_par.const: continue
+                    if raw_par in self._free_params: continue
                     self._free_params.append(raw_par)
         return self._free_params
 
@@ -545,7 +546,80 @@ class PF(object):
             pvalue = np.inf
         return self._free_params, self._pcov, chi2min, pvalue
 
-    def maxlikelihood_fit(self, data, **kwargs):
+    def logpf(self, *args, **kwargs):
+        """Compute the logarithm of the PF in x.
+
+        Parameters
+        ----------
+        args : ndarray, tuple
+            Random Variable(s) value(s)
+        kwargs : keywork arguments, optional
+            Shape parameters values
+
+        Returns
+        -------
+        value : float, ndarray
+            Probability Function value(s) in x
+
+        """
+        # Check if self.func contains a logpdf() or a logpmf() method
+        if self.pftype == PF.RAW:
+            method_name = 'logpdf'
+            try:
+                if isinstance(self.func, scipy.stats.rv_discrete):
+                    method_name = 'logpmf'
+                check_method_exists(obj=self.func,name=method_name)
+            except:
+                raise
+        # Get random variable value(s), mandatory
+        rv_values = None
+        if len(args):
+            rv_values = args
+        else:
+            rv_values = []
+            for rv_name in self._rvs:
+                if rv_name in kwargs: rv_values.append(kwargs[rv_name])
+        if self.pftype == PF.RAW and len(rv_values) != len(self._rvs):
+            raise SyntaxError('Provide %s input arguments for rvs' % 
+                              len(self._rvs))
+        # Get shape parameters, optional
+        param_values = [0.] * len(self.params)
+        for ipar,param in enumerate(self.params):
+            if param.name in kwargs and kwargs[param.name] != param.value:
+                param.value = kwargs[param.name]
+                self.logger.debug('%s value is updated to %f',
+                                  param.name,param.value)
+            param_values[ipar] = param.value
+        if type(rv_values[0]) == float:
+            self.logger.debug('self.func values=%s', rv_values)
+        # Compute logpf value in x
+        #  - in case of a DERIVED PF, call an operator
+        if self.pftype == PF.DERIVED:
+            if not isinstance(self.func, list) or len(self.func) != 3:
+                raise SyntaxError('DERIVED function is not recognized.')
+            op = self.func[0]
+            if op == operator.add:
+                value = log(self(x, **kwargs))
+            elif op == operator.mul:
+                vals = [0.,0.]
+                for idx in [1,2]:
+                    the_args = []
+                    for irv,rv_name in enumerate(self._rvs):
+                        if rv_name in self.func[idx]._rvs:
+                            the_args.append(rv_values[irv])
+                    vals[idx-1] = self.func[idx].logpf(*the_args, **kwargs)
+                value = self.norm.value + operator.add(vals[0],vals[1])
+            else:
+                raise NotImplementedError('Not yet possible...')
+            return value
+        #  - in case of a RAW PF, call directly the scipy function
+        if method_name == 'logpmf':
+            return self.norm.value * self.func.logpmf(rv_values[0],
+                                                      *param_values)
+        return self.norm.value * self.func.logpdf(rv_values[0],
+                                                  *param_values)
+
+    def maxlikelihood_fit(self, data, **kw):
         """Fit the PF to data using the maximum likelihood estimator method.
 
         The fitting part is performed using one of the scipy.optimize 
@@ -561,17 +635,19 @@ class PF(object):
         kw : keyword arguments (optional)
             Keyword arguments such as
 
-            optimizer : scipy.optimize
+            optimizer : scipy.optimize function
                 Function performing the minimization. A list of minimizer is 
                 available from scipy.optimize. If you provide your own, the
-                callable function must be defined with func and x0 as the first
-                two arguments. Data are passed via the args. 
+                callable function must be defined with func and x0 as the 
+                first two arguments. Data are passed via the args. 
 
         Returns
         -------
         free_params : statspy.core.Param list
              List of the free parameters used during the fit. Their 'value'
              arguments are extracted from the minimization process.
+        nnlfmin : float
+             Minimal value of the negative log-likelihood function
 
         """
         # Define parameters which should be minimized and set initial values
@@ -579,8 +655,45 @@ class PF(object):
         p0 = np.ones(len(self._free_params))
         for ipar,par in enumerate(self._free_params):
              p0[ipar] = par.unbound_repr()
+             print 'par',par.name,par
+        # Define and call the optimizer
+        optimizer = kw.get('optimizer', scipy.optimize.fmin)
+        popt = optimizer(self._nllf, p0, args=(data, ), disp=0)
+        # Manage results
+        for ipar,par in enumerate(self._free_params):
+            val2, unc2 = par.unbound_to_bound(popt[ipar])
+            par.value = val2
+        nllfmin = self.nllf(data)
+        return self._free_params, nllfmin
 
-        return self._free_params
+    def nllf(self, data, **kw):
+        """Evaluate the negative log-likelihood function
+
+        nllf = -sum(log(pf(x;params))
+
+        Parameters
+        ----------
+        data : ndarray, tuple
+            x - variates used in the computation of the likelihood 
+        kw : keyword arguments (optional)
+            Specify any Parameter name of the considered PF
+
+        Returns
+        -------
+        nllf : float
+            Negative log-likelihood function
+
+        """
+        # Update values of non-const PF parameters if specified in **kw
+        for par in enumerate(self._free_params):
+            if par.name in kw:
+                par.value = kw[par.name]
+        # Compute nllf
+        if isinstance(data, tuple):
+            nllf = -1 * np.sum(self.logpf(*data))
+        else:
+            nllf = -1 * np.sum(self.logpf(data))
+        return nllf
 
     def rvs(self, **kwargs):
         """Get random variates from a PF
@@ -736,6 +849,19 @@ class PF(object):
         # Return delta = (PF(x) - y)/sigma
         delta = weight * (self(xdata) * dx - ydata)
         return delta
+
+    def _nllf(self, params, data):
+        """Evaluate the negative log-likelihood function using unbound 
+        parameters"""
+        # Update values of non-const PF parameters
+        for ipar,par in enumerate(self._free_params):
+            par.unbound_to_bound(params[ipar])
+        # Compute nllf
+        if isinstance(data, tuple):
+            nllf = -1 * np.sum(self.logpf(*data))
+        else:
+            nllf = -1 * np.sum(self.logpf(data))
+        return nllf
 
 class Param(object):
     """Base class to define a PF shape parameter. 
@@ -1077,12 +1203,13 @@ class Param(object):
         if self.partype != Param.DERIVED: return raw_params
         if self.formula == None or type(self.formula) != list:
             return raw_params
-        for ele in self.formula:
-            if not isinstance(ele, Param): continue
-            if ele.partype == Param.RAW:
-                raw_params.append(ele)
-            elif ele.partype == Param.DERIVED:
-                raw_params += ele.get_raw_params()
+        for op in self.formula:
+            for ele in op:
+                if not isinstance(ele, Param): continue
+                if ele.partype == Param.RAW:
+                    raw_params.append(ele)
+                elif ele.partype == Param.DERIVED:
+                    raw_params += ele.get_raw_params()
         return raw_params
 
     def unbound_repr(self):
