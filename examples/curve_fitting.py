@@ -17,7 +17,7 @@ pdf_true_bkg = sp.PF("pdf_true_bkg=expon(x;offset_true=50,lambda_true=20)")
 pdf_true = 0.95 * pdf_true_bkg + 0.05 * pdf_true_sig
 # Sample data from the true PDF
 nexp = 10000 # number of expected events
-nobs = scipy.stats.poisson.rvs(nexp, size=1)
+nobs = scipy.stats.poisson.rvs(nexp, size=1)[0]
 data = pdf_true.rvs(size=nobs)
 
 fig = plt.figure()
@@ -43,6 +43,7 @@ sp.get_obj("mu").label    = "\\mu"
 sp.get_obj("sigma").label = "\\sigma"
 pdf_fit = pdf_fit_bkg + pdf_fit_sig
 pdf_fit.name = 'pdf_fit'
+pdf_fit.norm.const = False # Fit total rate to data
 pdf_fit.norm.label = 'Norm'
 pdf_fit.norm.value = nobs
 pdf_fit_sig.norm.label = 'frac(sig)'

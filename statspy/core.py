@@ -187,7 +187,7 @@ class PF(object):
         self.name = None
         self.func = None
         self.params = []
-        self.norm = Param(value=1.)
+        self.norm = Param(value=1., const=True)
         self.isuptodate = False
         self.logger = logging.getLogger('statspy.core.PF')
         self.pftype = PF.RAW
@@ -231,9 +231,11 @@ class PF(object):
                 if add_param.norm.partype == Param.RAW:
                     if add_param.norm.value >= 1.:
                         add_param.norm.value = frac0
+                    add_param.norm.const = False
                     add_param.norm.bounds = [0., 1.]
                 else:
-                    add_param.norm = Param(value=frac0, bounds=[0., 1.])
+                    add_param.norm = Param(value=frac0, bounds=[0., 1.],
+                                           const=False)
                     if add_param.name != None:
                         add_param.name = 'norm_%s' % add_param.name
                 if first:
@@ -441,12 +443,14 @@ class PF(object):
         """Get the list of free parameters."""
         self._free_params = []
         # Get the list of normalization factors
-        if not self.norm.const and self.norm.partype == Param.RAW:
+        if (not self.norm.const and self.norm.partype == Param.RAW and
+            (not self.norm in self._free_params)):
             self._free_params.append(self.norm)
         if self.pftype == PF.DERIVED and type(self.func) == list:
             for ele in self.func:
                 if not isinstance(ele, PF): continue
-                if ele.norm.partype == Param.RAW and not ele.norm.const:
+                if (ele.norm.partype == Param.RAW and not ele.norm.const and
+                    (not ele.norm in self._free_params)):
                     self._free_params.append(ele.norm)
                 elif ele.norm.partype == Param.DERIVED:
                     raw_params = ele.norm.get_raw_params()
@@ -524,6 +528,8 @@ class PF(object):
                                      args=args, full_output=1, **kw)
         # Manage results
         (popt, self._pcov, infodict, errmsg, ier) = res
+        self.logger.debug('Error message from leastsq: ' + str(ier) + 
+                          " " + errmsg)
         if ier not in [1,2,3,4]:
             msg = "Optimal parameters not found: " + errmsg
             raise RuntimeError(msg)
@@ -685,7 +691,7 @@ class PF(object):
 
         """
         # Update values of non-const PF parameters if specified in **kw
-        for par in enumerate(self._free_params):
+        for par in self._free_params:
             if par.name in kw:
                 par.value = kw[par.name]
         # Compute nllf
@@ -837,7 +843,7 @@ class PF(object):
             for ele in self.func:
                 if not isinstance(ele, PF): continue
                 raw_norm_params += ele._get_add_norm_params()
-        elif self.norm.partype == PF.RAW and not self.norm.const:
+        elif self.norm.partype == PF.RAW:
             norm_params.append(self)
         return norm_params
 
