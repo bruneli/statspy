@@ -701,6 +701,49 @@ class PF(object):
             nllf = -1 * np.sum(self.logpf(data))
         return nllf
 
+    def pllr(self, data, **kw):
+        """Evaluate the profile log-likelihood ratio ( * -2 )
+
+        The profile likelihood ratio is defined by:
+        l = L(x|theta_r,\hat{\hat{theta_s}})/L(x|\hat{theta_r},\hat{theta_s})
+        The profile log-likehood ratio is then:
+        q = -2 * log(l)
+        Where
+        - L is the Likelihood function (self)
+        - theta_r is the list of parameters of interest
+        - theta_s is the list of nuisance parameters
+        - hat or double hat refers to the unconditional or conditional
+          maximum likelood estimates of the parameters.
+        pllr is used as a test statistics for problems with numerous 
+        nuisance parameters. Asymptotically, the pllr PF is described by a
+        chi2 distribution (Wilks theorem).
+        Further information on the likelihood ratio can be found in Chapter 
+        22 of "Kendall's Advanced Theory of Statistics, Volume 2A".
+
+        Parameters
+        ----------
+        data : ndarray, tuple
+            x - variates used in the computation of the likelihood 
+        kw : keyword arguments (optional)
+            Specify any Parameter of interest name of the considered PF
+
+        Returns
+        -------
+        pllf : float
+            Profile log-likelihood ratio times -2
+
+        """
+        # Update values of non-const PF parameters if specified in **kw
+        for par in self._free_params:
+            if par.name in kw:
+                par.value = kw[par.name]
+        # Compute nllf
+        if isinstance(data, tuple):
+            nllf = -1 * np.sum(self.logpf(*data))
+        else:
+            nllf = -1 * np.sum(self.logpf(data))
+        return nllf
+
     def rvs(self, **kwargs):
         """Get random variates from a PF
 
@@ -899,6 +942,9 @@ class Param(object):
        const : bool
            Tells whether a parameter is fixed during a minimazation process.
            It is not a constant in the sense of C++.
+       poi :  bool
+           Tells whether a parameter is a parameter of interest in an
+           hypothesis test.
        isuptodate : bool
            Tells whether value needs to be computed again or not
        logger : logging.Logger
@@ -913,7 +959,7 @@ class Param(object):
     # Define the different parameter types
     (RAW,DERIVED) = (0,10)
 
-    def __init__(self,*args,**kwargs):
+    def __init__(self, *args, **kwargs):
         self.name    = kwargs.get('name', None)
         self.label   = kwargs.get('name', self.name)
         self.value   = kwargs.get('value', 0.)
@@ -922,6 +968,7 @@ class Param(object):
         self.formula = kwargs.get('formula', None)
         self.strform = kwargs.get('strform', None)
         self.const   = kwargs.get('const', False)
+        self.poi     = kwargs.get('poi', False)
         self.partype = Param.RAW
         self.isuptodate = True
         self.logger  = logging.getLogger('statspy.core.Param')
@@ -936,7 +983,7 @@ class Param(object):
         except:
             raise
 
-    def __add__(self,other):
+    def __add__(self, other):
         """Add a parameter to another parameter or a numerical value.
         
         Parameters
@@ -968,7 +1015,7 @@ class Param(object):
         """
         return self.value
 
-    def __div__(self,other):
+    def __div__(self, other):
         """Divide a parameter by another parameter or by a numerical value.
         
         Parameters
@@ -1001,7 +1048,7 @@ class Param(object):
             raise
         return object.__getattribute__(self, name)
 
-    def __iadd__(self,other):
+    def __iadd__(self, other):
         """In-place addition (+=)
         
         Parameters
@@ -1026,7 +1073,7 @@ class Param(object):
             raise
         return self
 
-    def __imul__(self,other):
+    def __imul__(self, other):
         """In-place multiplication (*=)
         
         Parameters
@@ -1051,7 +1098,7 @@ class Param(object):
             raise
         return self
 
-    def __isub__(self,other):
+    def __isub__(self, other):
         """In-place subtraction (-=)
         
         Parameters
@@ -1076,7 +1123,7 @@ class Param(object):
             raise
         return self
 
-    def __mul__(self,other):
+    def __mul__(self, other):
         """Multiply a parameter by another parameter or by a numerical value.
         
         Parameters
@@ -1097,7 +1144,7 @@ class Param(object):
             raise
         return new
 
-    def __pow__(self,other):
+    def __pow__(self, other):
         """Raise a parameter the power.
         
         Parameters
@@ -1118,7 +1165,7 @@ class Param(object):
             raise
         return new
 
-    def __radd__(self,other):
+    def __radd__(self, other):
         """Add a numerical value to a parameter"""
         try:
             new = Param(formula=[[operator.add, other, self]],
@@ -1127,7 +1174,7 @@ class Param(object):
             raise
         return new
 
-    def __rdiv__(self,other):
+    def __rdiv__(self, other):
         """Divide a numerical value by a parameter"""
         try:
             new = Param(formula=[[operator.div, other, self]],
@@ -1143,7 +1190,7 @@ class Param(object):
         theStr = theStr + str(self.value)
         return theStr
 
-    def __rmul__(self,other):
+    def __rmul__(self, other):
         """Multiply a numerival value by a parameter"""
         try:
             new = Param(formula=[[operator.mul, other, self]],
@@ -1152,7 +1199,7 @@ class Param(object):
             raise
         return new
 
-    def __rpow__(self,other):
+    def __rpow__(self, other):
         """Raise a numerical value to the power"""
         try:
             new = Param(formula=[[operator.pow, other, self]],
@@ -1161,7 +1208,7 @@ class Param(object):
             raise
         return new
 
-    def __rsub__(self,other):
+    def __rsub__(self, other):
         """Subtract a numerical value to a parameter"""
         try:
             new = Param(formula=[[operator.sub, other, self]],
@@ -1183,7 +1230,7 @@ class Param(object):
             self._register_in_db(value)
         super(Param, self).__setattr__(name, value)
 
-    def __sub__(self,other):
+    def __sub__(self, other):
         """Subtract a parameter to another parameter or a numerical value.
         
         Parameters
@@ -1383,7 +1430,7 @@ class Param(object):
                 strform = '(%s) %s (%s)' % (par1_strform, op, par2_strform)
         return strform
 
-def check_method_exists(obj=None,name=""):
+def check_method_exists(obj=None, name=""):
     if obj == None:
         raise StandardError('Object is not defined, check syntax.')
     if (not hasattr(obj,name) or 
