@@ -17,7 +17,7 @@ As many packages, StatsPy relies heavily on acronyms. The main ones are used to 
 
 * **PF = Probability Function**, a generic name, following Kendall's Advanced Theory of Statistics, referring both to Probability Density Functions (PDF/pdf) in the case of continuous random variables and to Probability Mass Functions (PMF/pmf) for discrete random variables.
 * **RV = Random Variable**, which is self explanatory.
-* **Param**eters 
+* **Param**eters denote quantities that appear specifically in the specification of the probability function. In the present package, any function of parameters will be also named a parameter, and such quantities are named *derived* in opposition with *raw* parameters.
 
 ### Probability Functions
 
@@ -45,9 +45,19 @@ In this case the whole PF is defined via the string argument
         >>> mu.value
         20
 
-There are alternative ways to declare a "raw" PF such as
+Alternatively keyword arguments can be used to set various PF members
 
     >>> poisson_pmf = sp.PF("poisson(n|lbda)",name="pmf_poisson",lbda=10)
+
+To evaluate the probability function in `x`, the `__call__` operator is used. `x` can be either a float or an array:
+
+    >>> mypdf(25)
+    0.048394144903828672
+    >>> import numpy as np
+    >>> import matplotlib.pyplot as plt
+    >>> x = np.asarray(range(400))*0.1
+    >>> plt.plot(x,mypdf(x),'r-')
+    >>> plt.show()
 
 #### Operations on PFs
 
