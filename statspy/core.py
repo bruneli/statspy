@@ -661,7 +661,6 @@ class PF(object):
         p0 = np.ones(len(self._free_params))
         for ipar,par in enumerate(self._free_params):
              p0[ipar] = par.unbound_repr()
-             print 'par',par.name,par
         # Define and call the optimizer
         optimizer = kw.get('optimizer', scipy.optimize.fmin)
         popt = optimizer(self._nllf, p0, args=(data, ), disp=0)
@@ -725,7 +724,8 @@ class PF(object):
         data : ndarray, tuple
             x - variates used in the computation of the likelihood 
         kw : keyword arguments (optional)
-            Specify any Parameter of interest name of the considered PF
+            Specify any Parameter of interest name of the considered PF,
+            or any option used by the method maxlikelihood_fit.
 
         Returns
         -------
@@ -733,16 +733,26 @@ class PF(object):
             Profile log-likelihood ratio times -2
 
         """
+        # Find the free parameters and the parameters of interest 
         # Update values of non-const PF parameters if specified in **kw
+        self.get_list_free_params()
+        lpois = []
         for par in self._free_params:
+            if not par.poi: continue
+            lpois.append(par)
             if par.name in kw:
                 par.value = kw[par.name]
-        # Compute nllf
-        if isinstance(data, tuple):
-            nllf = -1 * np.sum(self.logpf(*data))
-        else:
-            nllf = -1 * np.sum(self.logpf(data))
-        return nllf
+        # Compute the conditional nllf (pois are fixed)
+        for idx,poi in enumerate(lpois):
+            poi.const = True
+        cond_params, cond_nllf = self.maxlikelihood_fit(data, **kw)
+        for idx,poi in enumerate(lpois):
+            poi.const = False
+        # Compute the unconditional nllf (pois are treated as free parameters)
+        uncond_params, uncond_nllf = self.maxlikelihood_fit(data, **kw)
+        # Evaluate the pllr
+        pllr = 2. * (cond_nllf - uncond_nllf)
+        return pllr
 
     def rvs(self, **kwargs):
         """Get random variates from a PF
@@ -835,6 +845,10 @@ class PF(object):
                 raise SyntaxError("self.name is already set to %s" % self.name)
             self.name = kwargs['name']
             self.norm.name = 'norm_%s' % self.name
+            for par in self.params:
+                if par.name == None: continue
+                if not par.name in _dparams: continue
+                _dparams[par.name]['pfs'].append(self.name)
         if not foundArgs and not 'func' in kwargs:
             raise SyntaxError("You cannot declare a PF without specifying a function to caracterize it.")
         if 'func' in kwargs:
@@ -851,6 +865,16 @@ class PF(object):
                         if not rv_name in self._rvs: self._rvs.append(rv_name)
             else:
                 self.pftype = PF.RAW
+        if 'param' in kwargs:
+            if len(self.params) != 0: 
+                raise SyntaxError("self.params are already declared.")
+            if not isinstance(kwargs['params'], list):
+                raise SyntaxError("params should be a list.")
+            self.params = kwargs['params']
+            for par in self.params:
+                if par.name == None or self.name == None: continue
+                if not par.name in _dparams: continue
+                _dparams[par.name]['pfs'].append(self.name)
         for param in self.params:
             if param.name in kwargs and kwargs[param.name] != param.value:
                 param.value = kwargs[param.name]
@@ -1459,9 +1483,9 @@ def update_status(obj_dict):
         for obj in obj_dict[obj_key]:
             if hasattr(obj, "isuptodate"): obj.isuptodate = False
             if hasattr(obj, "name") and obj.name != None:
-                if obj_key == "rvs":
+                if obj_key == "rvs" and obj.name in _drvs:
                     update_status(_drvs[obj.name])
-                if obj_key == "pfs":
+                if obj_key == "pfs" and obj.name in _dpfs:
                     update_status(_dpfs[obj.name])
-                if obj_key == "params":
+                if obj_key == "params" and obj.name in _dparams:
                     update_status(_dparams[obj.name])

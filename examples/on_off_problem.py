@@ -11,6 +11,7 @@ are described in:
 
 """
 
+import math
 import numpy as np
 import statspy as sp
 import matplotlib.pyplot as plt
@@ -18,14 +19,15 @@ from matplotlib import ticker
 
 # Define the different parameters of the problem
 # Parameter of interest:
-s = sp.Param(name='s', value=0) # Signal expectation in the signal region
+mu = sp.Param(name='mu', value=0, poi=True)  # Signal strength
+s  = sp.Param(name='s', value=3, const=True) # Expected number of signal evts
 # Nuisance parameter:
-b = sp.Param(name='b', value=1) # Background expectation in the signal region
+b = sp.Param(name='b', value=1) # Expected number of bkg evts in signal region
 # Transfer factor between the control and signal regions (constant)
 tau = sp.Param(name='tau', value=5, const=True)
 # Derived quantities
-mu_on  = s + b # Total events expectation in the signal region
-mu_off = tau*b # Total events expectation in the control region
+mu_on  = mu * s + b # Total events expectation in the signal region
+mu_off = tau*b      # Total events expectation in the control region
 mu_on.name  = 'mu_on'  # Parameters must be named to be recalled later via str
 mu_off.name = 'mu_off'
 
@@ -33,9 +35,11 @@ mu_off.name = 'mu_off'
 pmf_on  = sp.PF('pmf_on=poisson(n_on;mu_on)')
 pmf_off = sp.PF('pmf_off=poisson(n_off;mu_off)')
 likelihood = pmf_on * pmf_off
-data = (pmf_on.rvs(size=1), pmf_off.rvs(size=1))
+data = (4, 5) #(pmf_on.rvs(size=1), pmf_off.rvs(size=1))
 print 'data',data
-likelihood.maxlikelihood_fit(data)
+#likelihood.maxlikelihood_fit(data)
+pllr = likelihood.pllr(data)
+print 'pllr',pllr,math.sqrt(pllr)
 
 # 2D-histo of likelihood vs (n_on, n_off)
 x = y = np.arange(0, 20)
