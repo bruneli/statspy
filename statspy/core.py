@@ -290,26 +290,9 @@ class PF(object):
             except:
                 raise
         # Get random variable value(s), mandatory
-        rv_values = None
-        if len(args):
-            rv_values = args
-        else:
-            rv_values = []
-            for rv_name in self._rvs:
-                if rv_name in kwargs: rv_values.append(kwargs[rv_name])
-        if self.pftype == PF.RAW and len(rv_values) != len(self._rvs):
-            raise SyntaxError('Provide %s input arguments for rvs' % 
-                              len(self._rvs))
+        rv_values = self._get_rv_values(*args, **kwargs)
         # Get shape parameters, optional
-        param_values = [0.] * len(self.params)
-        for ipar,param in enumerate(self.params):
-            if param.name in kwargs and kwargs[param.name] != param.value:
-                param.value = kwargs[param.name]
-                self.logger.debug('%s value is updated to %f',
-                                  param.name,param.value)
-            param_values[ipar] = param.value
-        if type(rv_values[0]) == float:
-            self.logger.debug('self.func values=%s', rv_values)
+        param_values = self._get_param_values(**kwargs)
         # Compute pf value in x
         #  - in case of a DERIVED PF, call an operator
         if self.pftype == PF.DERIVED:
@@ -370,6 +353,50 @@ class PF(object):
         except:
             raise
         return self
+
+    def cdf(self, *args, **kwargs):
+        """Compute the cumulative distribution function in x.
+
+        Parameters
+        ----------
+        args : ndarray, tuple
+            Random Variable(s) value(s)
+        kwargs : keywork arguments, optional
+            Shape parameters values
+
+        Returns
+        -------
+        value : float, ndarray
+            Cumulative distribution function value(s) in x
+
+        """
+        # Check if self.func contains a cdf() method
+        if self.pftype == PF.RAW:
+            try:
+                check_method_exists(obj=self.func,name='cdf')
+            except:
+                raise
+        # Get random variable value(s), mandatory
+        rv_values = self._get_rv_values(*args, **kwargs)
+        # Get shape parameters, optional
+        param_values = self._get_param_values(**kwargs)
+        # Compute cdf value in x
+        #  - in case of a DERIVED PF, call an operator
+        if self.pftype == PF.DERIVED:
+            if not isinstance(self.func, list) or len(self.func) != 3:
+                raise SyntaxError('DERIVED function is not recognized.')
+            op = self.func[0]
+            vals = [0.,0.]
+            for idx in [1,2]:
+                the_args = []
+                for irv,rv_name in enumerate(self._rvs):
+                    if rv_name in self.func[idx]._rvs:
+                        the_args.append(rv_values[irv])
+                vals[idx-1] = self.func[idx].cdf(*the_args, **kwargs)
+            value = self.norm.value * op(vals[0],vals[1])
+            return value
+        #  - in case of a RAW PF, call directly the scipy function
+        return self.norm.value * self.func.cdf(rv_values[0], *param_values)
 
     def dF(self, x):
         """Compute the uncertainty on PF given the uncertainty on the shape
@@ -565,7 +592,7 @@ class PF(object):
         Returns
         -------
         value : float, ndarray
-            Probability Function value(s) in x
+            Logarithm of the Probability Function value(s) in x
 
         """
         # Check if self.func contains a logpdf() or a logpmf() method
@@ -578,26 +605,9 @@ class PF(object):
             except:
                 raise
         # Get random variable value(s), mandatory
-        rv_values = None
-        if len(args):
-            rv_values = args
-        else:
-            rv_values = []
-            for rv_name in self._rvs:
-                if rv_name in kwargs: rv_values.append(kwargs[rv_name])
-        if self.pftype == PF.RAW and len(rv_values) != len(self._rvs):
-            raise SyntaxError('Provide %s input arguments for rvs' % 
-                              len(self._rvs))
+        rv_values = self._get_rv_values(*args, **kwargs)
         # Get shape parameters, optional
-        param_values = [0.] * len(self.params)
-        for ipar,param in enumerate(self.params):
-            if param.name in kwargs and kwargs[param.name] != param.value:
-                param.value = kwargs[param.name]
-                self.logger.debug('%s value is updated to %f',
-                                  param.name,param.value)
-            param_values[ipar] = param.value
-        if type(rv_values[0]) == float:
-            self.logger.debug('self.func values=%s', rv_values)
+        param_values = self._get_param_values(**kwargs)
         # Compute logpf value in x
         #  - in case of a DERIVED PF, call an operator
         if self.pftype == PF.DERIVED:
@@ -605,7 +615,7 @@ class PF(object):
                 raise SyntaxError('DERIVED function is not recognized.')
             op = self.func[0]
             if op == operator.add:
-                value = log(self(x, **kwargs))
+                value = np.log(self(*args, **kwargs))
             elif op == operator.mul:
                 vals = [0.,0.]
                 for idx in [1,2]:
@@ -799,6 +809,50 @@ class PF(object):
             raise
         return data
 
+    def sf(self, *args, **kwargs):
+        """Compute the survival function (1 - cdf) in x.
+
+        Parameters
+        ----------
+        args : ndarray, tuple
+            Random Variable(s) value(s)
+        kwargs : keywork arguments, optional
+            Shape parameters values
+
+        Returns
+        -------
+        value : float, ndarray
+            Survival function value(s) in x
+
+        """
+        # Check if self.func contains an sf() method
+        if self.pftype == PF.RAW:
+            try:
+                check_method_exists(obj=self.func,name='sf')
+            except:
+                raise
+        # Get random variable value(s), mandatory
+        rv_values = self._get_rv_values(*args, **kwargs)
+        # Get shape parameters, optional
+        param_values = self._get_param_values(**kwargs)
+        # Compute cdf value in x
+        #  - in case of a DERIVED PF, call an operator
+        if self.pftype == PF.DERIVED:
+            if not isinstance(self.func, list) or len(self.func) != 3:
+                raise SyntaxError('DERIVED function is not recognized.')
+            op = self.func[0]
+            vals = [0.,0.]
+            for idx in [1,2]:
+                the_args = []
+                for irv,rv_name in enumerate(self._rvs):
+                    if rv_name in self.func[idx]._rvs:
+                        the_args.append(rv_values[irv])
+                vals[idx-1] = self.func[idx].sf(*the_args, **kwargs)
+            value = self.norm.value * op(vals[0],vals[1])
+            return value
+        #  - in case of a RAW PF, call directly the scipy function
+        return self.norm.value * self.func.sf(rv_values[0], *param_values)
+
     def _check_args_syntax(self, args):
         if not len(args): return False
         if not isinstance(args[0],str):
@@ -913,6 +967,31 @@ class PF(object):
         elif self.norm.partype == PF.RAW:
             norm_params.append(self)
         return norm_params
+
+    def _get_param_values(self, **kwargs):
+        param_values = [0.] * len(self.params)
+        for ipar,param in enumerate(self.params):
+            if param.name in kwargs and kwargs[param.name] != param.value:
+                param.value = kwargs[param.name]
+                self.logger.debug('%s value is updated to %f',
+                                  param.name,param.value)
+            param_values[ipar] = param.value
+        return param_values
+
+    def _get_rv_values(self, *args, **kwargs):
+        rv_values = None
+        if len(args):
+            rv_values = args
+        else:
+            rv_values = []
+            for rv_name in self._rvs:
+                if rv_name in kwargs: rv_values.append(kwargs[rv_name])
+        if self.pftype == PF.RAW and len(rv_values) != len(self._rvs):
+            raise SyntaxError('Provide %s input arguments for rvs' % 
+                              len(self._rvs))
+        if type(rv_values[0]) == float:
+            self.logger.debug('rv values=%s', rv_values)
+        return rv_values
 
     def _leastsq_function(self, params, xdata, ydata, weight, dx):
         """Function used by scipy.optimize.leastsq"""

@@ -59,7 +59,25 @@ To evaluate the probability function in `x`, the `__call__` operator is used. `x
     >>> plt.plot(x,mypdf(x),'r-')
     >>> plt.show()
 
-#### Operations on PFs
+Since available in scipy.stats, the cumulative distribution function (`PF.cdf`), the survival function (`PF.sf` = 1 - `PF.cdf`), and the logarithm of the probability function (`PF.logpf`) can be evaluated via:
+
+    >>> plt.plot(x,mypdf.cdf(x))
+    >>> plt.plot(x,mypdf.sf(x))
+    >>> plt.show()
+    >>> plt.plot(x,-mypdf.logpf(x))
+    >>> plt.show()
+
+Finally, as in scipy.stats, it is possible to generate random variates using the function (`PF.rvs`):
+
+    >>> mypdf.rvs(size=10)
+
+#### Operations with PFs
+
+The methods seen in the first section do not really bring value with respect to scipy.stats and are heavily relying on them. The real gain of StatsPy is the possibility to conveniently build new PFs from existing PFs via different operations.
+
+* The possibility to **add** different PFs can be convenient in practical problems where for example there is a random signal on top of a random background.
+
+    **Example 2**: a normally distributed signal on top of an exponentially falling background can be easily modelled with the following syntax:
 
 #### An interlude about parameters
 
