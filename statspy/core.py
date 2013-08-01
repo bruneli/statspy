@@ -14,11 +14,11 @@ import operator
 import scipy.stats
 import scipy.optimize
 
-__all__ = ['RV','PF','Param','logger','get_obj']
+__all__ = ['Param','PF','RV','logger','get_obj']
 
-_drvs    = {}  # Dictionary hosting the list of random variables
-_dpfs    = {}  # Dictionary hosting the list of probability functions
 _dparams = {}  # Dictionary hosting the list of parameters
+_dpfs    = {}  # Dictionary hosting the list of probability functions
+_drvs    = {}  # Dictionary hosting the list of random variables
 
 # Logging system
 logger = logging.getLogger(__name__)
@@ -27,993 +27,6 @@ _ch = logging.StreamHandler() # Console handler
 _formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 _ch.setFormatter(_formatter)
 logger.addHandler(_ch)
-logger.debug('logger has been set to DEBUG mode')
-
-class RV(object):
-    """Base class to define a Random Variable. 
-
-       Attributes
-       ----------
-       name : str
-           Random Variable name
-       pf : statspy.core.PF
-           Probability Function object associated to a Random Variable
-       params : statspy.core.Param list
-           List of shape parameters used to define the pf
-       isuptodate : bool
-           Tells whether associated PF needs to be normalised or not
-       logger : logging.Logger
-           message logging system
-
-       Examples:
-       ---------
-       >>> import statspy as sp 
-       >>> x = sp.RV("norm(x|mu=10,sigma=2)")
-    """
-
-    def __init__(self,*args,**kwargs):
-        self.name = ""
-        self.pf = None
-        self.params = []
-        self.isuptodate = True
-        self.logger = logging.getLogger('statspy.core.RV')
-        try:
-            self.logger.debug('args = %s, kwargs = %s',args,kwargs)
-            foundArgs = self._check_args_syntax(args)
-            self._check_kwargs_syntax(kwargs,foundArgs)
-        except:
-            raise
-
-    def pf(self,x,**kwargs):
-        """Evaluate Probability (Mass/Density) Function in x
-
-        Parameters
-        ----------
-        x : float, ndarray
-            Random Variable value(s)
-        kwargs : dictionary, optional
-            Shape parameters values
-
-        """
-        if type(x) == float:
-            self.logger.debug('x=%f,shape_values=%s',x,kwargs)
-        return self._pf(x,**kwargs)
-
-    def _check_args_syntax(self,args):
-        if not len(args): return False
-        if not isinstance(args[0],str):
-            raise SyntaxError("If an argument is passed to PF without a keyword, it must be a string.")
-        # Analyse the string
-        theStr = args[0]
-        if '=' in theStr:
-            self.name = theStr.split('=')[0].strip().lstrip()
-            self.logger.debug("Found PF name %s", self.name)
-            theStr = theStr.split('=')[1]
-        if not '(' in theStr:
-            raise SyntaxError("No pf found in %s" % theStr)
-        if not ')' in theStr:
-            raise SyntaxError("Paranthesis is not closed in %s" % theStr)
-        func_name = theStr.split('(')[0].strip()
-        if len(func_name.split()): func_name = func_name.split()[-1]
-        if not func_name in scipy.stats.__all__:
-            raise SyntaxError("%s is not found in scipy.stats" % func_name)
-        self.logger.debug("Found scipy.stats function named %s",func_name)
-        rvNames  = theStr.split('(')[1].split(')')[0].strip().lstrip()
-        parNames = rvNames
-        if ';' in rvNames:
-            rvNames  = rvNames.split(';')[0].strip().lstrip()
-            parNames = parNames.split(';')[1].strip().lstrip()
-        elif '|' in rvNames:
-            rvNames  = rvNames.split('|')[0].strip().lstrip()
-            parNames = parNames.split('|')[1].strip().lstrip()
-        else:
-            parNames = None
-        lrvs = []
-        for rv_name in rvNames.split(','):
-            lpars.append(rv_name.strip().lstrip())
-        lpars = []
-        if parNames != None:
-            for par_name in parNames.split(','):
-                lpars.append(par_name.strip().lstrip())
-        self._declare(func_name,lrvs,lpars)
-        return True
-
-    def _check_kwargs_syntax(self,kwargs,foundArgs):
-        if not len(kwargs): return False
-        if not foundArgs and not 'pf' in kwargs:
-            raise SyntaxError("You cannot declare a Random Variable without specifying a pf.")
-        if 'name' in kwargs: self.name = kwargs['name']
-        if 'pf' in kwargs: self.pf = kwargs['pf']
-        if 'params' in kwargs: self.params = kwargs['params']
-        for param in self.params:
-            if param.name in kwargs and kwargs[param.name] != param.value:
-                param.value = kwargs[param.name]
-                self.logger.debug('%s value is updated to %f',
-                                  param.name,param.value)
-        return True
-
-    def _declare(self,pfName,rvName,lpars):
-        # Set/Update Random Variable name
-        self.name = rvName
-        # Declare/Update parameters
-        for parStr in lpars:
-            parName = parStr.split('=')[0].strip().lstrip()
-            parVal = 0.
-            if '=' in parStr:
-                parVal = float(parStr.split('=')[1].strip().lstrip())
-            if not parName in _dparams:
-                _dparams[parName] = {'rvs':[],'pfs':[]}
-                _dparams[parName]['obj'] = Param(name=parName,value=parVal)
-            if not self.name in _dparams[parName]['rvs']:
-                _dparams[parName]['rvs'].append(self.name)
-            self.params.append(_dparams[parName]['obj'])
-        # Declare pf (no shape parameter specified yet)
-        self._pf = getattr(scipy.stats,pfName)
-        return
-
-class PF(object):
-    """Base class to define a Probability Function. 
-
-       Probability Function is a generic name which includes both the
-       probability mass function for discrete random variables and the
-       probability density fucntion for continuous random variables.
-
-       Attributes
-       ----------
-       name : str (optional)
-           Function name
-       func : scipy.stats.distributions.rv_generic (optional)
-           Probability Density Function object associated to a Random Variable
-       params : statspy.core.Param list
-           List of shape parameters used to define the pf
-       norm : Param
-           Normalization parameter set to 1 by default. It can be different
-           from 1 when the PF is fitted to data.
-       isuptodate : bool
-           Tells whether PF needs to be normalised or not
-       logger : logging.Logger
-           message logging system
-
-       Examples
-       --------
-       >>> import statspy as sp
-       >>> pmf_n = sp.PF("poisson(n;mu)",mu=10.)
-    """
-
-    # Define the different parameter types
-    (RAW,DERIVED) = (0,10)
-
-    def __init__(self,*args,**kwargs):
-        self.name = None
-        self.func = None
-        self.params = []
-        self.norm = Param(value=1., const=True)
-        self.isuptodate = False
-        self.logger = logging.getLogger('statspy.core.PF')
-        self.pftype = PF.RAW
-        self._free_params = []
-        self._pcov = None
-        self._rvs = []
-        try:
-            self.logger.debug('args = %s, kwargs = %s',args,kwargs)
-            foundArgs = self._check_args_syntax(args)
-            self._check_kwargs_syntax(kwargs,foundArgs)
-            if isinstance(self.func, scipy.stats.distributions.rv_generic):
-                self.isuptodate = True
-        except:
-            raise
-
-    def __add__(self,other):
-        """Add two PFs.
-
-        The norm parameters are also summed.
-        
-        Parameters
-        ----------
-        self : PF
-        other : PF
-
-        Returns
-        -------
-        new : PF
-             new pf which is the sum of self and other
-        
-        """
-        try:
-            norm0 = [self.norm.value, other.norm.value]
-            self_params  = self._get_add_norm_params()
-            other_params = other._get_add_norm_params()
-            add_params = self_params + other_params
-            frac0 = 1./len(add_params)
-            first = True
-            for ipar,add_param in enumerate(add_params):
-                if not ipar: continue
-                if add_param.norm.partype == Param.RAW:
-                    if add_param.norm.value >= 1.:
-                        add_param.norm.value = frac0
-                    add_param.norm.const = False
-                    add_param.norm.bounds = [0., 1.]
-                else:
-                    add_param.norm = Param(value=frac0, bounds=[0., 1.],
-                                           const=False)
-                    if add_param.name != None:
-                        add_param.name = 'norm_%s' % add_param.name
-                if first:
-                    add_params[0].norm = 1. - add_param.norm
-                    first = False
-                else:
-                    add_params[0].norm -= add_param.norm
-            if add_params[0].name != None:
-                add_params[0].norm.name = 'norm_%s' % add_params[0].name
-            for ele in [self_params, other_params]:
-                if len(ele) < 2: continue
-                first = True
-                for ipar,add_param in enumerate(ele):
-                    if ipar == 0: continue
-                    if first:
-                        ele.norm = ele[0].norm + add_param.norm
-                        first = False
-                    else:
-                        ele.norm += add_param.norm
-                if ele.name != None:
-                    ele.norm.name = 'norm_%s' % ele.name
-            new = PF(func=[operator.add, self, other])
-            if norm0[0] != 1 or norm0[1] != 1:
-                new.norm.value = norm0[0] + norm0[1]
-        except:
-            raise
-        return new
-
-    def __call__(self, *args, **kwargs):
-        """Evaluate Probability Function in x
-
-        Parameters
-        ----------
-        args : float, ndarray, optional, multiple values for multivariate pfs
-            Random Variable(s) value(s)
-        kwargs : keywork arguments, optional
-            Shape parameters values
-
-        Returns
-        -------
-        value : float, ndarray
-            Probability Function value(s) in x
-
-        """
-        # Check if self.func contains a pdf() or a pmf() method
-        if self.pftype == PF.RAW:
-            method_name = 'pdf'
-            try:
-                if isinstance(self.func, scipy.stats.rv_discrete):
-                    method_name = 'pmf'
-                check_method_exists(obj=self.func,name=method_name)
-            except:
-                raise
-        # Get random variable value(s), mandatory
-        rv_values = self._get_rv_values(*args, **kwargs)
-        # Get shape parameters, optional
-        param_values = self._get_param_values(**kwargs)
-        # Compute pf value in x
-        #  - in case of a DERIVED PF, call an operator
-        if self.pftype == PF.DERIVED:
-            if not isinstance(self.func, list) or len(self.func) != 3:
-                raise SyntaxError('DERIVED function is not recognized.')
-            op = self.func[0]
-            vals = [0.,0.]
-            for idx in [1,2]:
-                the_args = []
-                for irv,rv_name in enumerate(self._rvs):
-                    if rv_name in self.func[idx]._rvs:
-                        the_args.append(rv_values[irv])
-                vals[idx-1] = self.func[idx](*the_args, **kwargs)
-            value = self.norm.value * op(vals[0],vals[1])
-            return value
-        #  - in case of a RAW PF, call directly the scipy function
-        if method_name == 'pmf': 
-            return self.norm.value * self.func.pmf(rv_values[0],
-                                                   *param_values)
-        return self.norm.value * self.func.pdf(rv_values[0], *param_values)
-
-    def __mul__(self, other):
-        """Multiply a PF by another PF.
-        
-        parameters
-        ----------
-        self : PF
-        other : PF
-
-        returns
-        -------
-        new : PF
-            new PF which is the product of self and other
-        
-        """
-        try:
-            new = PF(func=[operator.mul, self, other])
-        except:
-            raise
-        return new
-
-    def __rmul__(self, scale):
-        """Scale PF normalization value
-        
-        parameters
-        ----------
-        self : PF
-        scale : float
-
-        returns
-        -------
-        self : PF
-            original PF with self.norm.value *= scale
-        
-        """
-        try:
-            self.norm.value *= scale
-        except:
-            raise
-        return self
-
-    def cdf(self, *args, **kwargs):
-        """Compute the cumulative distribution function in x.
-
-        Parameters
-        ----------
-        args : ndarray, tuple
-            Random Variable(s) value(s)
-        kwargs : keywork arguments, optional
-            Shape parameters values
-
-        Returns
-        -------
-        value : float, ndarray
-            Cumulative distribution function value(s) in x
-
-        """
-        # Check if self.func contains a cdf() method
-        if self.pftype == PF.RAW:
-            try:
-                check_method_exists(obj=self.func,name='cdf')
-            except:
-                raise
-        # Get random variable value(s), mandatory
-        rv_values = self._get_rv_values(*args, **kwargs)
-        # Get shape parameters, optional
-        param_values = self._get_param_values(**kwargs)
-        # Compute cdf value in x
-        #  - in case of a DERIVED PF, call an operator
-        if self.pftype == PF.DERIVED:
-            if not isinstance(self.func, list) or len(self.func) != 3:
-                raise SyntaxError('DERIVED function is not recognized.')
-            op = self.func[0]
-            vals = [0.,0.]
-            for idx in [1,2]:
-                the_args = []
-                for irv,rv_name in enumerate(self._rvs):
-                    if rv_name in self.func[idx]._rvs:
-                        the_args.append(rv_values[irv])
-                vals[idx-1] = self.func[idx].cdf(*the_args, **kwargs)
-            value = self.norm.value * op(vals[0],vals[1])
-            return value
-        #  - in case of a RAW PF, call directly the scipy function
-        return self.norm.value * self.func.cdf(rv_values[0], *param_values)
-
-    def dF(self, x):
-        """Compute the uncertainty on PF given the uncertainty on the shape
-        and norm parameters.
-
-        This method can be used to show an error band on your fitted PF.
-        To compute the uncertainty on the PF, the error propagation formula is
-        used,
-            dF(x;th) = (F(x;th+dth) - F(x;th-dth))/2
-            dF(x)^2 = dF(x;th)^T * corr(th,th') * dF(x;th')
-        so keep in mind it is only an approximation.
-
-        parameters
-        ----------
-        x : float, ndarray
-            Random variate(s)
-
-        returns
-        -------
-        dF : float, ndarray
-            Uncertainty on the PF evaluated in x
-
-        """
-        # Get list of free parameters
-        self.get_list_free_params()
-        npars = len(self._free_params)
-        if npars == 0: return np.zeros(len(x))
-        popt = np.ndarray(npars)
-        punc = np.ndarray(npars)
-        for ipar,par in enumerate(self._free_params):
-            popt[ipar] = par.value
-            punc[ipar] = par.unc
-        # Build the correlation matrix
-        corr = np.ndarray((npars, npars))
-        if self._pcov != None:
-            if self._pcov.shape[0] != npars or self._pcov.shape[1] != npars:
-                raise SyntaxError('covariance matrix is not defined properly')
-            for ipar in range(npars):
-                for jpar in range(npars):
-                    corr[ipar][jpar] = self._pcov[ipar][jpar]
-                    if punc[ipar] != 0.: corr[ipar][jpar] /= punc[ipar]
-                    if punc[jpar] != 0.: corr[ipar][jpar] /= punc[jpar]
-        else:
-            corr = np.diag(np.ones(npars))
-        mcorr = np.asmatrix(corr)
-        # Compute dF(x;th)
-        if not isinstance(x, np.ndarray): x = np.asarray([x])
-        pf_plus  = None
-        pf_minus = None
-        for ipar in range(npars):
-            # theta -> theta + deltaTheta
-            (self._free_params[ipar]).value = popt[ipar] + punc[ipar]
-            y = self(x)
-            if pf_plus == None:
-                pf_plus = y
-            else:
-                pf_plus = np.vstack((pf_plus, y))
-            # theta -> theta - deltaTheta
-            (self._free_params[ipar]).value = popt[ipar] - punc[ipar]
-            y = self(x)
-            if pf_minus == None:
-                pf_minus = y
-            else:
-                pf_minus = np.vstack((pf_minus, y))
-        dF_th = np.asmatrix(0.5 * (pf_plus - pf_minus))
-        # Compute dF
-        dF = (dF_th.T * mcorr) * dF_th
-        return np.sqrt(np.diag(dF))
-
-    def get_list_free_params(self):
-        """Get the list of free parameters."""
-        self._free_params = []
-        # Get the list of normalization factors
-        if (not self.norm.const and self.norm.partype == Param.RAW and
-            (not self.norm in self._free_params)):
-            self._free_params.append(self.norm)
-        if self.pftype == PF.DERIVED and type(self.func) == list:
-            for ele in self.func:
-                if not isinstance(ele, PF): continue
-                if (ele.norm.partype == Param.RAW and not ele.norm.const and
-                    (not ele.norm in self._free_params)):
-                    self._free_params.append(ele.norm)
-                elif ele.norm.partype == Param.DERIVED:
-                    raw_params = ele.norm.get_raw_params()
-                    for raw_par in raw_params:
-                        if raw_par.const: continue
-                        self._free_params.append(raw_par)
-        # Get the list of shape parameters
-        for par in self.params:
-            if par.partype == Param.RAW and not par.const:
-                self._free_params.append(par)
-            elif par.partype == Param.DERIVED:
-                raw_params = par.get_raw_params()
-                for raw_par in raw_params:
-                    if raw_par.const: continue
-                    if raw_par in self._free_params: continue
-                    self._free_params.append(raw_par)
-        return self._free_params
-
-    def leastsq_fit(self, xdata, ydata, ey=None, dx=None, cond=None, **kw):
-        """Fit the PF to data using a least squares method.
-
-        The fitting part is performed using the scipy.optimize.leastsq 
-        function. The Levenberg-Marquardt algorithm is used by the 'leastsq'
-        method to find the minimum values.
-        When calling this method, all PF parameters are minimized except
-        the one which are set as 'const'.
-
-        Parameters
-        ----------
-        xdata : ndarray
-            Values for which ydata are measured and PF must be computed
-        ydata : ndarray
-            Observed values (like number of events)
-        ey : ndarray (optional)
-            Standard deviations of ydata. If not specified, it takes
-            sqrt(ydata) as standard deviation.
-        dx : ndarray (optional)
-            Array containing bin-width of xdata. It can be used to normalize
-            the PF to the integral while minimizing.
-        cond : boolean ndarray (optional)
-            Boolean array telling if a bin should be used in the fit or not
-        kw : keyword arguments
-            Keyword arguments passed to the leastsq method
-
-        Returns
-        -------
-        free_params : statspy.core.Param list
-             List of the free parameters used during the fit. Their 'value'
-             and 'unc' arguments are extracted from minimization.
-        pcov : 2d array
-             Estimated covariance matrix of the free parameters.
-        chi2min : float
-             Least square sum evaluated in popt.
-        pvalue : float
-             p-value = P(chi2>chi2min,ndf) with P a chi2 distribution and
-             ndf the number of degrees of freedom.
-
-        """
-        # Define parameters which should be minimized and set initial values
-        self.get_list_free_params()
-        p0 = np.ones(len(self._free_params))
-        for ipar,par in enumerate(self._free_params):
-             p0[ipar] = par.unbound_repr()
-        # Compute weights
-        if ey == None: ey = np.sqrt(ydata)
-        ey[ey == 0] = 1.
-        if cond == None:
-            weight = 1./np.asarray(ey)
-        else:
-            weight = cond/np.asarray(ey)
-        # Call the leastsq method
-        if dx == None: dx = np.ones(xdata.shape)
-        args = (xdata, ydata, weight, dx)
-        res = scipy.optimize.leastsq(self._leastsq_function, p0,
-                                     args=args, full_output=1, **kw)
-        # Manage results
-        (popt, self._pcov, infodict, errmsg, ier) = res
-        self.logger.debug('Error message from leastsq: ' + str(ier) + 
-                          " " + errmsg)
-        if ier not in [1,2,3,4]:
-            msg = "Optimal parameters not found: " + errmsg
-            raise RuntimeError(msg)
-        chi2min = (self._leastsq_function(popt, *args)**2).sum()
-        if (len(ydata) > len(p0)) and self._pcov is not None:
-            ndf = len(ydata)-len(p0)
-            self._pcov = self._pcov * chi2min / ndf
-            pvalue = scipy.stats.chi2.sf(chi2min, ndf)
-            for ipar,par in enumerate(self._free_params):
-                unc = 0.
-                if (self._pcov)[ipar][ipar] >= 0.:
-                    unc = math.sqrt((self._pcov)[ipar][ipar])
-                val2, unc2 = par.unbound_to_bound(popt[ipar], unc)
-                for jpar in range(len(self._free_params)):
-                    if unc == 0.: continue
-                    self._pcov[ipar][jpar] *= (unc2 / unc)
-                    self._pcov[jpar][ipar] *= (unc2 / unc)
-        else:
-            self._pcov = np.inf
-            pvalue = np.inf
-        return self._free_params, self._pcov, chi2min, pvalue
-
-    def logpf(self, *args, **kwargs):
-        """Compute the logarithm of the PF in x.
-
-        Parameters
-        ----------
-        args : ndarray, tuple
-            Random Variable(s) value(s)
-        kwargs : keywork arguments, optional
-            Shape parameters values
-
-        Returns
-        -------
-        value : float, ndarray
-            Logarithm of the Probability Function value(s) in x
-
-        """
-        # Check if self.func contains a logpdf() or a logpmf() method
-        if self.pftype == PF.RAW:
-            method_name = 'logpdf'
-            try:
-                if isinstance(self.func, scipy.stats.rv_discrete):
-                    method_name = 'logpmf'
-                check_method_exists(obj=self.func,name=method_name)
-            except:
-                raise
-        # Get random variable value(s), mandatory
-        rv_values = self._get_rv_values(*args, **kwargs)
-        # Get shape parameters, optional
-        param_values = self._get_param_values(**kwargs)
-        # Compute logpf value in x
-        #  - in case of a DERIVED PF, call an operator
-        if self.pftype == PF.DERIVED:
-            if not isinstance(self.func, list) or len(self.func) != 3:
-                raise SyntaxError('DERIVED function is not recognized.')
-            op = self.func[0]
-            if op == operator.add:
-                value = np.log(self(*args, **kwargs))
-            elif op == operator.mul:
-                vals = [0.,0.]
-                for idx in [1,2]:
-                    the_args = []
-                    for irv,rv_name in enumerate(self._rvs):
-                        if rv_name in self.func[idx]._rvs:
-                            the_args.append(rv_values[irv])
-                    vals[idx-1] = self.func[idx].logpf(*the_args, **kwargs)
-                value = self.norm.value + operator.add(vals[0],vals[1])
-            else:
-                raise NotImplementedError('Not yet possible...')
-            return value
-        #  - in case of a RAW PF, call directly the scipy function
-        if method_name == 'logpmf':
-            return self.norm.value * self.func.logpmf(rv_values[0],
-                                                      *param_values)
-        return self.norm.value * self.func.logpdf(rv_values[0],
-                                                  *param_values)
-
-    def maxlikelihood_fit(self, data, **kw):
-        """Fit the PF to data using the maximum likelihood estimator method.
-
-        The fitting part is performed using one of the scipy.optimize 
-        minimization function. By default scipy.optimize.fmin is used, i.e.
-        the downhill simplex algorithm.
-        When calling this method, all PF parameters are minimized except
-        the one which are set as 'const' before calling the method.
-
-        Parameters
-        ----------
-        data : ndarray, tuple
-            Data used in the computation of the (log-)likelihood function
-        kw : keyword arguments (optional)
-            Keyword arguments such as
-
-            optimizer : scipy.optimize function
-                Function performing the minimization. A list of minimizer is 
-                available from scipy.optimize. If you provide your own, the
-                callable function must be defined with func and x0 as the 
-                first two arguments. Data are passed via the args. 
-
-        Returns
-        -------
-        free_params : statspy.core.Param list
-             List of the free parameters used during the fit. Their 'value'
-             arguments are extracted from the minimization process.
-        nnlfmin : float
-             Minimal value of the negative log-likelihood function
-
-        """
-        # Define parameters which should be minimized and set initial values
-        self.get_list_free_params()
-        p0 = np.ones(len(self._free_params))
-        for ipar,par in enumerate(self._free_params):
-             p0[ipar] = par.unbound_repr()
-        # Define and call the optimizer
-        optimizer = kw.get('optimizer', scipy.optimize.fmin)
-        popt = optimizer(self._nllf, p0, args=(data, ), disp=0)
-        # Manage results
-        for ipar,par in enumerate(self._free_params):
-            val2, unc2 = par.unbound_to_bound(popt[ipar])
-            par.value = val2
-        nllfmin = self.nllf(data)
-        return self._free_params, nllfmin
-
-    def nllf(self, data, **kw):
-        """Evaluate the negative log-likelihood function
-
-        nllf = -sum(log(pf(x;params))
-
-        Parameters
-        ----------
-        data : ndarray, tuple
-            x - variates used in the computation of the likelihood 
-        kw : keyword arguments (optional)
-            Specify any Parameter name of the considered PF
-
-        Returns
-        -------
-        nllf : float
-            Negative log-likelihood function
-
-        """
-        # Update values of non-const PF parameters if specified in **kw
-        for par in self._free_params:
-            if par.name in kw:
-                par.value = kw[par.name]
-        # Compute nllf
-        if isinstance(data, tuple):
-            nllf = -1 * np.sum(self.logpf(*data))
-        else:
-            nllf = -1 * np.sum(self.logpf(data))
-        return nllf
-
-    def pllr(self, data, **kw):
-        """Evaluate the profile log-likelihood ratio ( * -2 )
-
-        The profile likelihood ratio is defined by:
-        l = L(x|theta_r,\hat{\hat{theta_s}})/L(x|\hat{theta_r},\hat{theta_s})
-        The profile log-likehood ratio is then:
-        q = -2 * log(l)
-        Where
-        - L is the Likelihood function (self)
-        - theta_r is the list of parameters of interest
-        - theta_s is the list of nuisance parameters
-        - hat or double hat refers to the unconditional or conditional
-          maximum likelood estimates of the parameters.
-        pllr is used as a test statistics for problems with numerous 
-        nuisance parameters. Asymptotically, the pllr PF is described by a
-        chi2 distribution (Wilks theorem).
-        Further information on the likelihood ratio can be found in Chapter 
-        22 of "Kendall's Advanced Theory of Statistics, Volume 2A".
-
-        Parameters
-        ----------
-        data : ndarray, tuple
-            x - variates used in the computation of the likelihood 
-        kw : keyword arguments (optional)
-            Specify any Parameter of interest name of the considered PF,
-            or any option used by the method maxlikelihood_fit.
-
-        Returns
-        -------
-        pllf : float
-            Profile log-likelihood ratio times -2
-
-        """
-        # Find the free parameters and the parameters of interest 
-        # Update values of non-const PF parameters if specified in **kw
-        self.get_list_free_params()
-        lpois = []
-        for par in self._free_params:
-            if not par.poi: continue
-            lpois.append(par)
-            if par.name in kw:
-                par.value = kw[par.name]
-        # Compute the conditional nllf (pois are fixed)
-        for idx,poi in enumerate(lpois):
-            poi.const = True
-        cond_params, cond_nllf = self.maxlikelihood_fit(data, **kw)
-        for idx,poi in enumerate(lpois):
-            poi.const = False
-        # Compute the unconditional nllf (pois are treated as free parameters)
-        uncond_params, uncond_nllf = self.maxlikelihood_fit(data, **kw)
-        # Evaluate the pllr
-        pllr = 2. * (cond_nllf - uncond_nllf)
-        return pllr
-
-    def rvs(self, **kwargs):
-        """Get random variates from a PF
-
-        Keyword arguments
-        -----------------
-        size : int
-             Number of random variates
-        mu, sigma,... : float
-             Any parameter name used while declaring the PF
-
-        Returns
-        -------
-        data : ndarray
-             Array of random variates
-
-        Examples
-        --------
-        >>> import statspy as sp
-        >>> pdf_x = sp.PF("pdf_x=norm(x;mu=20,sigma=5)")
-        >>> data = pdf_x.rvs(size=1000)
-
-        """
-        try:
-            if isinstance(self.func, list):
-                if len(self.func) == 3 and self.func[0] == operator.add:
-                    data1 = self.func[1].rvs(**kwargs)
-                    data2 = self.func[2].rvs(**kwargs)
-                    data3 = scipy.stats.uniform.rvs(size=len(data1))
-                    cond = (data3 < self.func[1].norm.value)
-                    data = cond * data1 + (1 - cond) * data2
-                else:
-                    raise NotImplementedError('Not yet possible...')
-            else:
-                method_name = "rvs"
-                check_method_exists(obj=self.func,name=method_name)
-                shape_params = []
-                for param in self.params:
-                    if param.name in kwargs:
-                        param.value = kwargs[param.name]
-                    shape_params.append(param.value)
-                data = self.func.rvs(*shape_params, **kwargs)
-        except:
-            raise
-        return data
-
-    def sf(self, *args, **kwargs):
-        """Compute the survival function (1 - cdf) in x.
-
-        Parameters
-        ----------
-        args : ndarray, tuple
-            Random Variable(s) value(s)
-        kwargs : keywork arguments, optional
-            Shape parameters values
-
-        Returns
-        -------
-        value : float, ndarray
-            Survival function value(s) in x
-
-        """
-        # Check if self.func contains an sf() method
-        if self.pftype == PF.RAW:
-            try:
-                check_method_exists(obj=self.func,name='sf')
-            except:
-                raise
-        # Get random variable value(s), mandatory
-        rv_values = self._get_rv_values(*args, **kwargs)
-        # Get shape parameters, optional
-        param_values = self._get_param_values(**kwargs)
-        # Compute cdf value in x
-        #  - in case of a DERIVED PF, call an operator
-        if self.pftype == PF.DERIVED:
-            if not isinstance(self.func, list) or len(self.func) != 3:
-                raise SyntaxError('DERIVED function is not recognized.')
-            op = self.func[0]
-            vals = [0.,0.]
-            for idx in [1,2]:
-                the_args = []
-                for irv,rv_name in enumerate(self._rvs):
-                    if rv_name in self.func[idx]._rvs:
-                        the_args.append(rv_values[irv])
-                vals[idx-1] = self.func[idx].sf(*the_args, **kwargs)
-            value = self.norm.value * op(vals[0],vals[1])
-            return value
-        #  - in case of a RAW PF, call directly the scipy function
-        return self.norm.value * self.func.sf(rv_values[0], *param_values)
-
-    def _check_args_syntax(self, args):
-        if not len(args): return False
-        if not isinstance(args[0],str):
-            raise SyntaxError("If an argument is passed to PF without a keyword, it must be a string.")
-        # Analyse the string
-        theStr = args[0]
-        if not '(' in theStr:
-            raise SyntaxError("No pf found in %s" % theStr)
-        if not ')' in theStr:
-            raise SyntaxError("Paranthesis is not closed in %s" % theStr)
-        func_name = theStr.split('(')[0].strip()
-        if '=' in func_name:
-            self.name = func_name.split('=')[0].strip().lstrip()
-            self.norm.name = 'norm_%s' % self.name
-            self.logger.debug("Found PF name %s", self.name)
-            func_name = func_name.split('=')[1]
-        if len(func_name.split()): func_name = func_name.split()[-1]
-        if not func_name in scipy.stats.__all__:
-            raise SyntaxError("%s is not found in scipy.stats" % func_name)
-        self.logger.debug("Found scipy.stats function named %s",func_name)
-        rvNames  = theStr.split('(')[1].split(')')[0].strip().lstrip()
-        parNames = rvNames
-        if ';' in rvNames:
-            rvNames  = rvNames.split(';')[0].strip().lstrip()
-            parNames = parNames.split(';')[1].strip().lstrip()
-        elif '|' in rvNames:
-            rvNames  = rvNames.split('|')[0].strip().lstrip()
-            parNames = parNames.split('|')[1].strip().lstrip()
-        else:
-            parNames = None
-        for rv_name in rvNames.split(','):
-            if not rv_name in self._rvs: self._rvs.append(rv_name)
-        lpars = []
-        if parNames != None:
-            for par_name in parNames.split(','):
-                lpars.append(par_name.strip().lstrip())
-        self._declare(func_name,lpars)
-        return True
-
-    def _check_kwargs_syntax(self, kwargs, foundArgs):
-        if not len(kwargs): return False
-        if 'name' in kwargs:
-            if self.name != None:
-                raise SyntaxError("self.name is already set to %s" % self.name)
-            self.name = kwargs['name']
-            self.norm.name = 'norm_%s' % self.name
-            for par in self.params:
-                if par.name == None: continue
-                if not par.name in _dparams: continue
-                _dparams[par.name]['pfs'].append(self.name)
-        if not foundArgs and not 'func' in kwargs:
-            raise SyntaxError("You cannot declare a PF without specifying a function to caracterize it.")
-        if 'func' in kwargs:
-            if self.func != None:
-                raise SyntaxError("self.func already exists.")
-            self.func = kwargs['func']
-            if type(self.func) == list:
-                self.pftype = PF.DERIVED
-                for ele in self.func:
-                    if not isinstance(ele, PF): continue
-                    for par in ele.params:
-                        if not par in self.params: self.params.append(par)
-                    for rv_name in ele._rvs:
-                        if not rv_name in self._rvs: self._rvs.append(rv_name)
-            else:
-                self.pftype = PF.RAW
-        if 'param' in kwargs:
-            if len(self.params) != 0: 
-                raise SyntaxError("self.params are already declared.")
-            if not isinstance(kwargs['params'], list):
-                raise SyntaxError("params should be a list.")
-            self.params = kwargs['params']
-            for par in self.params:
-                if par.name == None or self.name == None: continue
-                if not par.name in _dparams: continue
-                _dparams[par.name]['pfs'].append(self.name)
-        for param in self.params:
-            if param.name in kwargs and kwargs[param.name] != param.value:
-                param.value = kwargs[param.name]
-                self.logger.debug('%s value is updated to %f',
-                                  param.name,param.value)
-        return True
-
-    def _declare(self, func_name, lpars):
-        # Declare functional form of PF (no shape parameter specified yet)
-        self.func = getattr(scipy.stats,func_name)
-        self.pftype = PF.RAW
-        # Declare/Update parameters
-        for parStr in lpars:
-            parName = parStr.split('=')[0].strip().lstrip()
-            parVal = 0.
-            if '=' in parStr:
-                parVal = float(parStr.split('=')[1].strip().lstrip())
-            if not parName in _dparams:
-                _dparams[parName] = {'rvs':[],'pfs':[]}
-                _dparams[parName]['obj'] = Param(name=parName,value=parVal)
-            if self.name != None:
-                if not self.name in _dparams[parName]['pfs']:
-                    _dparams[parName]['pfs'].append(self.name)
-            else:
-                if not self in _dparams[parName]['pfs']:
-                    _dparams[parName]['pfs'].append(self)
-            self.params.append(_dparams[parName]['obj'])
-        return
-
-    def _get_add_norm_params(self):
-        norm_params = []
-        if self.pftype == PF.DERIVED and self.func[0] == operator.add:
-            for ele in self.func:
-                if not isinstance(ele, PF): continue
-                raw_norm_params += ele._get_add_norm_params()
-        elif self.norm.partype == PF.RAW:
-            norm_params.append(self)
-        return norm_params
-
-    def _get_param_values(self, **kwargs):
-        param_values = [0.] * len(self.params)
-        for ipar,param in enumerate(self.params):
-            if param.name in kwargs and kwargs[param.name] != param.value:
-                param.value = kwargs[param.name]
-                self.logger.debug('%s value is updated to %f',
-                                  param.name,param.value)
-            param_values[ipar] = param.value
-        return param_values
-
-    def _get_rv_values(self, *args, **kwargs):
-        rv_values = None
-        if len(args):
-            rv_values = args
-        else:
-            rv_values = []
-            for rv_name in self._rvs:
-                if rv_name in kwargs: rv_values.append(kwargs[rv_name])
-        if self.pftype == PF.RAW and len(rv_values) != len(self._rvs):
-            raise SyntaxError('Provide %s input arguments for rvs' % 
-                              len(self._rvs))
-        if type(rv_values[0]) == float:
-            self.logger.debug('rv values=%s', rv_values)
-        return rv_values
-
-    def _leastsq_function(self, params, xdata, ydata, weight, dx):
-        """Function used by scipy.optimize.leastsq"""
-        # Update values of non-const PF parameters
-        for ipar,par in enumerate(self._free_params):
-            par.unbound_to_bound(params[ipar])
-        # Return delta = (PF(x) - y)/sigma
-        delta = weight * (self(xdata) * dx - ydata)
-        return delta
-
-    def _nllf(self, params, data):
-        """Evaluate the negative log-likelihood function using unbound 
-        parameters"""
-        # Update values of non-const PF parameters
-        for ipar,par in enumerate(self._free_params):
-            par.unbound_to_bound(params[ipar])
-        # Compute nllf
-        if isinstance(data, tuple):
-            nllf = -1 * np.sum(self.logpf(*data))
-        else:
-            nllf = -1 * np.sum(self.logpf(data))
-        return nllf
 
 class Param(object):
     """Base class to define a PF shape parameter. 
@@ -1532,6 +545,1045 @@ class Param(object):
             else:
                 strform = '(%s) %s (%s)' % (par1_strform, op, par2_strform)
         return strform
+logger.debug('logger has been set to DEBUG mode')
+
+class PF(object):
+    """Base class to define a Probability Function. 
+
+       Probability Function is a generic name which includes both the
+       probability mass function for discrete random variables and the
+       probability density fucntion for continuous random variables.
+
+       Attributes
+       ----------
+       name : str (optional)
+           Function name
+       func : scipy.stats.distributions.rv_generic, list
+           Probability Density Function object associated to a Random 
+           Variable. For a RAW PF, it is a pdf or pmf of scipy.stats. For a
+           DERIVED PF, it is list containing an operator and pointers to
+           other PFs.
+       params : statspy.core.Param list
+           List of shape parameters used to define the pf
+       rvs : list
+           List of random variables stored in list as [name, lower bound, 
+           upper bound, variable type]
+       norm : Param
+           Normalization parameter set to 1 by default. It can be different
+           from 1 when the PF is fitted to data.
+       isuptodate : bool
+           Tells whether PF needs to be normalized or not
+       logger : logging.Logger
+           message logging system
+
+       Examples
+       --------
+       >>> import statspy as sp
+       >>> pmf_n = sp.PF("poisson(n;mu)",mu=10.)
+    """
+
+    # Define the different probability function types
+    (RAW,DERIVED) = (0,10)
+
+    def __init__(self,*args,**kwargs):
+        self.name = None
+        self.func = None
+        self.params = []
+        self.rvs = []
+        self.norm = Param(value=1., const=True)
+        self.isuptodate = False
+        self.logger = logging.getLogger('statspy.core.PF')
+        self.pftype = PF.RAW
+        self._free_params = []
+        self._pcov = None
+        try:
+            self.logger.debug('args = %s, kwargs = %s',args,kwargs)
+            foundArgs = self._check_args_syntax(args)
+            self._check_kwargs_syntax(kwargs,foundArgs)
+            if isinstance(self.func, scipy.stats.distributions.rv_generic):
+                self.isuptodate = True
+                self.rvs[0][1] = self.func.a # Lower bound
+                self.rvs[0][2] = self.func.b # Upper bound
+                if isinstance(self.func, scipy.stats.rv_discrete):
+                    self.rvs[0][3] = RV.DISCRETE
+                elif isinstance(self.func, scipy.stats.rv_continuous):
+                    self.rvs[0][3] = RV.CONTINUOUS
+        except:
+            raise
+
+    def __add__(self,other):
+        """Add two PFs.
+
+        The norm parameters are also summed.
+        
+        Parameters
+        ----------
+        self : PF
+        other : PF
+
+        Returns
+        -------
+        new : PF
+             new pf which is the sum of self and other
+        
+        """
+        try:
+            norm0 = [self.norm.value, other.norm.value]
+            self_params  = self._get_add_norm_params()
+            other_params = other._get_add_norm_params()
+            add_params = self_params + other_params
+            frac0 = 1./len(add_params)
+            first = True
+            for ipar,add_param in enumerate(add_params):
+                if not ipar: continue
+                if add_param.norm.partype == Param.RAW:
+                    if add_param.norm.value >= 1.:
+                        add_param.norm.value = frac0
+                    add_param.norm.const = False
+                    add_param.norm.bounds = [0., 1.]
+                else:
+                    add_param.norm = Param(value=frac0, bounds=[0., 1.],
+                                           const=False)
+                    if add_param.name != None:
+                        add_param.name = 'norm_%s' % add_param.name
+                if first:
+                    add_params[0].norm = 1. - add_param.norm
+                    first = False
+                else:
+                    add_params[0].norm -= add_param.norm
+            if add_params[0].name != None:
+                add_params[0].norm.name = 'norm_%s' % add_params[0].name
+            for ele in [self_params, other_params]:
+                if len(ele) < 2: continue
+                first = True
+                for ipar,add_param in enumerate(ele):
+                    if ipar == 0: continue
+                    if first:
+                        ele.norm = ele[0].norm + add_param.norm
+                        first = False
+                    else:
+                        ele.norm += add_param.norm
+                if ele.name != None:
+                    ele.norm.name = 'norm_%s' % ele.name
+            new = PF(func=[operator.add, self, other])
+            if norm0[0] != 1 or norm0[1] != 1:
+                new.norm.value = norm0[0] + norm0[1]
+        except:
+            raise
+        return new
+
+    def __call__(self, *args, **kwargs):
+        """Evaluate Probability Function in x
+
+        Parameters
+        ----------
+        args : float, ndarray, optional, multiple values for multivariate pfs
+            Random Variable(s) value(s)
+        kwargs : keywork arguments, optional
+            Shape parameters values
+
+        Returns
+        -------
+        value : float, ndarray
+            Probability Function value(s) in x
+
+        """
+        # Check if self.func contains a pdf() or a pmf() method
+        if self.pftype == PF.RAW:
+            method_name = 'pdf'
+            try:
+                if isinstance(self.func, scipy.stats.rv_discrete):
+                    method_name = 'pmf'
+                check_method_exists(obj=self.func,name=method_name)
+            except:
+                raise
+        # Get random variable value(s), mandatory
+        rv_values = self._get_rv_values(*args, **kwargs)
+        # Get shape parameters, optional
+        param_values = self._get_param_values(**kwargs)
+        # Compute pf value in x
+        #  - in case of a DERIVED PF, call an operator
+        if self.pftype == PF.DERIVED:
+            if not isinstance(self.func, list) or len(self.func) != 3:
+                raise SyntaxError('DERIVED function is not recognized.')
+            op = self.func[0]
+            vals = [0.,0.]
+            for idx in [1,2]:
+                the_args = []
+                for irv,rv in enumerate(self.rvs):
+                    if rv[0] in self.func[idx].rv_names():
+                        the_args.append(rv_values[irv])
+                vals[idx-1] = self.func[idx](*the_args, **kwargs)
+            value = self.norm.value * op(vals[0],vals[1])
+            return value
+        #  - in case of a RAW PF, call directly the scipy function
+        if method_name == 'pmf': 
+            return self.norm.value * self.func.pmf(rv_values[0],
+                                                   *param_values)
+        return self.norm.value * self.func.pdf(rv_values[0], *param_values)
+
+    def __mul__(self, other):
+        """Multiply a PF by another PF.
+        
+        parameters
+        ----------
+        self : PF
+        other : PF
+
+        returns
+        -------
+        new : PF
+            new PF which is the product of self and other
+        
+        """
+        try:
+            new = PF(func=[operator.mul, self, other])
+        except:
+            raise
+        return new
+
+    def __rmul__(self, scale):
+        """Scale PF normalization value
+        
+        parameters
+        ----------
+        self : PF
+        scale : float
+
+        returns
+        -------
+        self : PF
+            original PF with self.norm.value *= scale
+        
+        """
+        try:
+            self.norm.value *= scale
+        except:
+            raise
+        return self
+
+    def cdf(self, *args, **kwargs):
+        """Compute the cumulative distribution function in x.
+
+        Parameters
+        ----------
+        args : ndarray, tuple
+            Random Variable(s) value(s)
+        kwargs : keywork arguments, optional
+            Shape parameters values
+
+        Returns
+        -------
+        value : float, ndarray
+            Cumulative distribution function value(s) in x
+
+        """
+        # Check if self.func contains a cdf() method
+        if self.pftype == PF.RAW:
+            try:
+                check_method_exists(obj=self.func,name='cdf')
+            except:
+                raise
+        # Get random variable value(s), mandatory
+        rv_values = self._get_rv_values(*args, **kwargs)
+        # Get shape parameters, optional
+        param_values = self._get_param_values(**kwargs)
+        # Compute cdf value in x
+        #  - in case of a DERIVED PF, call an operator
+        if self.pftype == PF.DERIVED:
+            if not isinstance(self.func, list) or len(self.func) != 3:
+                raise SyntaxError('DERIVED function is not recognized.')
+            op = self.func[0]
+            vals = [0.,0.]
+            for idx in [1,2]:
+                the_args = []
+                for irv,rv in enumerate(self.rvs):
+                    if rv[0] in self.func[idx].rv_names():
+                        the_args.append(rv_values[irv])
+                vals[idx-1] = self.func[idx].cdf(*the_args, **kwargs)
+            value = self.norm.value * op(vals[0],vals[1])
+            return value
+        #  - in case of a RAW PF, call directly the scipy function
+        return self.norm.value * self.func.cdf(rv_values[0], *param_values)
+
+    def convolve(self, other, mode='fft'):
+        """Convolve two PFs which is same as adding two random variables.
+
+        The scipy.signal package is used to perform the convolution with
+        different options set by mode.
+
+        parameters
+        ----------
+        self : PF
+        other : PF
+        mode : str
+            Way to perform the convolution. If mode is equal to:
+            - 'fft' then scipy.signal.fftconvolve is used
+            - 'num' then scipy.signal.convolve is used
+
+        returns
+        -------
+        new : PF
+            new PF which is the convolution of self and other
+
+        """
+        try:
+            if not (mode == 'fft' or mode == 'num'):
+                raise SyntaxError('mode should be fft or num.')
+            if len(self.rvs) != len(other.rvs):
+                raise SyntaxError('self and other should have the same number of rvs.')
+            new = PF(func=['rvadd_%d' % mode, self, other])
+        except:
+            raise
+        return new
+
+    def dF(self, x):
+        """Compute the uncertainty on PF given the uncertainty on the shape
+        and norm parameters.
+
+        This method can be used to show an error band on your fitted PF.
+        To compute the uncertainty on the PF, the error propagation formula is
+        used,
+            dF(x;th) = (F(x;th+dth) - F(x;th-dth))/2
+            dF(x)^2 = dF(x;th)^T * corr(th,th') * dF(x;th')
+        so keep in mind it is only an approximation.
+
+        parameters
+        ----------
+        x : float, ndarray
+            Random variate(s)
+
+        returns
+        -------
+        dF : float, ndarray
+            Uncertainty on the PF evaluated in x
+
+        """
+        # Get list of free parameters
+        self.get_list_free_params()
+        npars = len(self._free_params)
+        if npars == 0: return np.zeros(len(x))
+        popt = np.ndarray(npars)
+        punc = np.ndarray(npars)
+        for ipar,par in enumerate(self._free_params):
+            popt[ipar] = par.value
+            punc[ipar] = par.unc
+        # Build the correlation matrix
+        corr = np.ndarray((npars, npars))
+        if self._pcov != None:
+            if self._pcov.shape[0] != npars or self._pcov.shape[1] != npars:
+                raise SyntaxError('covariance matrix is not defined properly')
+            for ipar in range(npars):
+                for jpar in range(npars):
+                    corr[ipar][jpar] = self._pcov[ipar][jpar]
+                    if punc[ipar] != 0.: corr[ipar][jpar] /= punc[ipar]
+                    if punc[jpar] != 0.: corr[ipar][jpar] /= punc[jpar]
+        else:
+            corr = np.diag(np.ones(npars))
+        mcorr = np.asmatrix(corr)
+        # Compute dF(x;th)
+        if not isinstance(x, np.ndarray): x = np.asarray([x])
+        pf_plus  = None
+        pf_minus = None
+        for ipar in range(npars):
+            # theta -> theta + deltaTheta
+            (self._free_params[ipar]).value = popt[ipar] + punc[ipar]
+            y = self(x)
+            if pf_plus == None:
+                pf_plus = y
+            else:
+                pf_plus = np.vstack((pf_plus, y))
+            # theta -> theta - deltaTheta
+            (self._free_params[ipar]).value = popt[ipar] - punc[ipar]
+            y = self(x)
+            if pf_minus == None:
+                pf_minus = y
+            else:
+                pf_minus = np.vstack((pf_minus, y))
+        dF_th = np.asmatrix(0.5 * (pf_plus - pf_minus))
+        # Compute dF
+        dF = (dF_th.T * mcorr) * dF_th
+        return np.sqrt(np.diag(dF))
+
+    def get_list_free_params(self):
+        """Get the list of free parameters."""
+        self._free_params = []
+        # Get the list of normalization factors
+        if (not self.norm.const and self.norm.partype == Param.RAW and
+            (not self.norm in self._free_params)):
+            self._free_params.append(self.norm)
+        if self.pftype == PF.DERIVED and type(self.func) == list:
+            for ele in self.func:
+                if not isinstance(ele, PF): continue
+                if (ele.norm.partype == Param.RAW and not ele.norm.const and
+                    (not ele.norm in self._free_params)):
+                    self._free_params.append(ele.norm)
+                elif ele.norm.partype == Param.DERIVED:
+                    raw_params = ele.norm.get_raw_params()
+                    for raw_par in raw_params:
+                        if raw_par.const: continue
+                        self._free_params.append(raw_par)
+        # Get the list of shape parameters
+        for par in self.params:
+            if par.partype == Param.RAW and not par.const:
+                self._free_params.append(par)
+            elif par.partype == Param.DERIVED:
+                raw_params = par.get_raw_params()
+                for raw_par in raw_params:
+                    if raw_par.const: continue
+                    if raw_par in self._free_params: continue
+                    self._free_params.append(raw_par)
+        return self._free_params
+
+    def leastsq_fit(self, xdata, ydata, ey=None, dx=None, cond=None, **kw):
+        """Fit the PF to data using a least squares method.
+
+        The fitting part is performed using the scipy.optimize.leastsq 
+        function. The Levenberg-Marquardt algorithm is used by the 'leastsq'
+        method to find the minimum values.
+        When calling this method, all PF parameters are minimized except
+        the one which are set as 'const'.
+
+        Parameters
+        ----------
+        xdata : ndarray
+            Values for which ydata are measured and PF must be computed
+        ydata : ndarray
+            Observed values (like number of events)
+        ey : ndarray (optional)
+            Standard deviations of ydata. If not specified, it takes
+            sqrt(ydata) as standard deviation.
+        dx : ndarray (optional)
+            Array containing bin-width of xdata. It can be used to normalize
+            the PF to the integral while minimizing.
+        cond : boolean ndarray (optional)
+            Boolean array telling if a bin should be used in the fit or not
+        kw : keyword arguments
+            Keyword arguments passed to the leastsq method
+
+        Returns
+        -------
+        free_params : statspy.core.Param list
+             List of the free parameters used during the fit. Their 'value'
+             and 'unc' arguments are extracted from minimization.
+        pcov : 2d array
+             Estimated covariance matrix of the free parameters.
+        chi2min : float
+             Least square sum evaluated in popt.
+        pvalue : float
+             p-value = P(chi2>chi2min,ndf) with P a chi2 distribution and
+             ndf the number of degrees of freedom.
+
+        """
+        # Define parameters which should be minimized and set initial values
+        self.get_list_free_params()
+        p0 = np.ones(len(self._free_params))
+        for ipar,par in enumerate(self._free_params):
+             p0[ipar] = par.unbound_repr()
+        # Compute weights
+        if ey == None: ey = np.sqrt(ydata)
+        ey[ey == 0] = 1.
+        if cond == None:
+            weight = 1./np.asarray(ey)
+        else:
+            weight = cond/np.asarray(ey)
+        # Call the leastsq method
+        if dx == None: dx = np.ones(xdata.shape)
+        args = (xdata, ydata, weight, dx)
+        res = scipy.optimize.leastsq(self._leastsq_function, p0,
+                                     args=args, full_output=1, **kw)
+        # Manage results
+        (popt, self._pcov, infodict, errmsg, ier) = res
+        self.logger.debug('Error message from leastsq: ' + str(ier) + 
+                          " " + errmsg)
+        if ier not in [1,2,3,4]:
+            msg = "Optimal parameters not found: " + errmsg
+            raise RuntimeError(msg)
+        chi2min = (self._leastsq_function(popt, *args)**2).sum()
+        if (len(ydata) > len(p0)) and self._pcov is not None:
+            ndf = len(ydata)-len(p0)
+            self._pcov = self._pcov * chi2min / ndf
+            pvalue = scipy.stats.chi2.sf(chi2min, ndf)
+            for ipar,par in enumerate(self._free_params):
+                unc = 0.
+                if (self._pcov)[ipar][ipar] >= 0.:
+                    unc = math.sqrt((self._pcov)[ipar][ipar])
+                val2, unc2 = par.unbound_to_bound(popt[ipar], unc)
+                for jpar in range(len(self._free_params)):
+                    if unc == 0.: continue
+                    self._pcov[ipar][jpar] *= (unc2 / unc)
+                    self._pcov[jpar][ipar] *= (unc2 / unc)
+        else:
+            self._pcov = np.inf
+            pvalue = np.inf
+        return self._free_params, self._pcov, chi2min, pvalue
+
+    def logpf(self, *args, **kwargs):
+        """Compute the logarithm of the PF in x.
+
+        Parameters
+        ----------
+        args : ndarray, tuple
+            Random Variable(s) value(s)
+        kwargs : keywork arguments, optional
+            Shape parameters values
+
+        Returns
+        -------
+        value : float, ndarray
+            Logarithm of the Probability Function value(s) in x
+
+        """
+        # Check if self.func contains a logpdf() or a logpmf() method
+        if self.pftype == PF.RAW:
+            method_name = 'logpdf'
+            try:
+                if isinstance(self.func, scipy.stats.rv_discrete):
+                    method_name = 'logpmf'
+                check_method_exists(obj=self.func,name=method_name)
+            except:
+                raise
+        # Get random variable value(s), mandatory
+        rv_values = self._get_rv_values(*args, **kwargs)
+        # Get shape parameters, optional
+        param_values = self._get_param_values(**kwargs)
+        # Compute logpf value in x
+        #  - in case of a DERIVED PF, call an operator
+        if self.pftype == PF.DERIVED:
+            if not isinstance(self.func, list) or len(self.func) != 3:
+                raise SyntaxError('DERIVED function is not recognized.')
+            op = self.func[0]
+            if op == operator.add:
+                value = np.log(self(*args, **kwargs))
+            elif op == operator.mul:
+                vals = [0.,0.]
+                for idx in [1,2]:
+                    the_args = []
+                    for irv,rv in enumerate(self.rvs):
+                        if rv[0] in self.func[idx].rv_names():
+                            the_args.append(rv_values[irv])
+                    vals[idx-1] = self.func[idx].logpf(*the_args, **kwargs)
+                value = self.norm.value + operator.add(vals[0],vals[1])
+            else:
+                raise NotImplementedError('Not yet possible...')
+            return value
+        #  - in case of a RAW PF, call directly the scipy function
+        if method_name == 'logpmf':
+            return self.norm.value * self.func.logpmf(rv_values[0],
+                                                      *param_values)
+        return self.norm.value * self.func.logpdf(rv_values[0],
+                                                  *param_values)
+
+    def maxlikelihood_fit(self, data, **kw):
+        """Fit the PF to data using the maximum likelihood estimator method.
+
+        The fitting part is performed using one of the scipy.optimize 
+        minimization function. By default scipy.optimize.fmin is used, i.e.
+        the downhill simplex algorithm.
+        When calling this method, all PF parameters are minimized except
+        the one which are set as 'const' before calling the method.
+
+        Parameters
+        ----------
+        data : ndarray, tuple
+            Data used in the computation of the (log-)likelihood function
+        kw : keyword arguments (optional)
+            Keyword arguments such as
+
+            optimizer : scipy.optimize function
+                Function performing the minimization. A list of minimizer is 
+                available from scipy.optimize. If you provide your own, the
+                callable function must be defined with func and x0 as the 
+                first two arguments. Data are passed via the args. 
+
+        Returns
+        -------
+        free_params : statspy.core.Param list
+             List of the free parameters used during the fit. Their 'value'
+             arguments are extracted from the minimization process.
+        nnlfmin : float
+             Minimal value of the negative log-likelihood function
+
+        """
+        # Define parameters which should be minimized and set initial values
+        self.get_list_free_params()
+        p0 = np.ones(len(self._free_params))
+        for ipar,par in enumerate(self._free_params):
+             p0[ipar] = par.unbound_repr()
+        # Define and call the optimizer
+        optimizer = kw.get('optimizer', scipy.optimize.fmin)
+        popt = optimizer(self._nllf, p0, args=(data, ), disp=0)
+        # Manage results
+        for ipar,par in enumerate(self._free_params):
+            val2, unc2 = par.unbound_to_bound(popt[ipar])
+            par.value = val2
+        nllfmin = self.nllf(data)
+        return self._free_params, nllfmin
+
+    def nllf(self, data, **kw):
+        """Evaluate the negative log-likelihood function
+
+        nllf = -sum(log(pf(x;params))
+
+        Parameters
+        ----------
+        data : ndarray, tuple
+            x - variates used in the computation of the likelihood 
+        kw : keyword arguments (optional)
+            Specify any Parameter name of the considered PF
+
+        Returns
+        -------
+        nllf : float
+            Negative log-likelihood function
+
+        """
+        # Update values of non-const PF parameters if specified in **kw
+        for par in self._free_params:
+            if par.name in kw:
+                par.value = kw[par.name]
+        # Compute nllf
+        if isinstance(data, tuple):
+            nllf = -1 * np.sum(self.logpf(*data))
+        else:
+            nllf = -1 * np.sum(self.logpf(data))
+        return nllf
+
+    def pllr(self, data, **kw):
+        """Evaluate the profile log-likelihood ratio ( * -2 )
+
+        The profile likelihood ratio is defined by:
+        l = L(x|theta_r,\hat{\hat{theta_s}})/L(x|\hat{theta_r},\hat{theta_s})
+        The profile log-likehood ratio is then:
+        q = -2 * log(l)
+        Where
+        - L is the Likelihood function (self)
+        - theta_r is the list of parameters of interest
+        - theta_s is the list of nuisance parameters
+        - hat or double hat refers to the unconditional or conditional
+          maximum likelood estimates of the parameters.
+        pllr is used as a test statistics for problems with numerous 
+        nuisance parameters. Asymptotically, the pllr PF is described by a
+        chi2 distribution (Wilks theorem).
+        Further information on the likelihood ratio can be found in Chapter 
+        22 of "Kendall's Advanced Theory of Statistics, Volume 2A".
+
+        Parameters
+        ----------
+        data : ndarray, tuple
+            x - variates used in the computation of the likelihood 
+        kw : keyword arguments (optional)
+            Specify any Parameter of interest name of the considered PF,
+            or any option used by the method maxlikelihood_fit.
+
+        Returns
+        -------
+        pllf : float
+            Profile log-likelihood ratio times -2
+
+        """
+        # Find the free parameters and the parameters of interest 
+        # Update values of non-const PF parameters if specified in **kw
+        self.get_list_free_params()
+        lpois = []
+        for par in self._free_params:
+            if not par.poi: continue
+            lpois.append(par)
+            if par.name in kw:
+                par.value = kw[par.name]
+        # Compute the conditional nllf (pois are fixed)
+        for idx,poi in enumerate(lpois):
+            poi.const = True
+        cond_params, cond_nllf = self.maxlikelihood_fit(data, **kw)
+        for idx,poi in enumerate(lpois):
+            poi.const = False
+        # Compute the unconditional nllf (pois are treated as free parameters)
+        uncond_params, uncond_nllf = self.maxlikelihood_fit(data, **kw)
+        # Evaluate the pllr
+        pllr = 2. * (cond_nllf - uncond_nllf)
+        return pllr
+
+    def rvs(self, **kwargs):
+        """Get random variates from a PF
+
+        Keyword arguments
+        -----------------
+        size : int
+             Number of random variates
+        mu, sigma,... : float
+             Any parameter name used while declaring the PF
+
+        Returns
+        -------
+        data : ndarray
+             Array of random variates
+
+        Examples
+        --------
+        >>> import statspy as sp
+        >>> pdf_x = sp.PF("pdf_x=norm(x;mu=20,sigma=5)")
+        >>> data = pdf_x.rvs(size=1000)
+
+        """
+        try:
+            if isinstance(self.func, list):
+                if len(self.func) == 3 and self.func[0] == operator.add:
+                    data1 = self.func[1].rvs(**kwargs)
+                    data2 = self.func[2].rvs(**kwargs)
+                    data3 = scipy.stats.uniform.rvs(size=len(data1))
+                    cond = (data3 < self.func[1].norm.value)
+                    data = cond * data1 + (1 - cond) * data2
+                else:
+                    raise NotImplementedError('Not yet possible...')
+            else:
+                method_name = "rvs"
+                check_method_exists(obj=self.func,name=method_name)
+                shape_params = []
+                for param in self.params:
+                    if param.name in kwargs:
+                        param.value = kwargs[param.name]
+                    shape_params.append(param.value)
+                data = self.func.rvs(*shape_params, **kwargs)
+        except:
+            raise
+        return data
+
+    def rv_names(self):
+        """Return a list of RV names."""
+        rv_names = [ rv[0] for rv in self.rvs ]
+        return rv_names
+
+    def sf(self, *args, **kwargs):
+        """Compute the survival function (1 - cdf) in x.
+
+        Parameters
+        ----------
+        args : ndarray, tuple
+            Random Variable(s) value(s)
+        kwargs : keywork arguments, optional
+            Shape parameters values
+
+        Returns
+        -------
+        value : float, ndarray
+            Survival function value(s) in x
+
+        """
+        # Check if self.func contains an sf() method
+        if self.pftype == PF.RAW:
+            try:
+                check_method_exists(obj=self.func,name='sf')
+            except:
+                raise
+        # Get random variable value(s), mandatory
+        rv_values = self._get_rv_values(*args, **kwargs)
+        # Get shape parameters, optional
+        param_values = self._get_param_values(**kwargs)
+        # Compute cdf value in x
+        #  - in case of a DERIVED PF, call an operator
+        if self.pftype == PF.DERIVED:
+            if not isinstance(self.func, list) or len(self.func) != 3:
+                raise SyntaxError('DERIVED function is not recognized.')
+            op = self.func[0]
+            vals = [0.,0.]
+            for idx in [1,2]:
+                the_args = []
+                for irv,rv in enumerate(self.rvs):
+                    if rv[0] in self.func[idx].rv_names():
+                        the_args.append(rv_values[irv])
+                vals[idx-1] = self.func[idx].sf(*the_args, **kwargs)
+            value = self.norm.value * op(vals[0],vals[1])
+            return value
+        #  - in case of a RAW PF, call directly the scipy function
+        return self.norm.value * self.func.sf(rv_values[0], *param_values)
+
+    def _check_args_syntax(self, args):
+        if not len(args): return False
+        if not isinstance(args[0],str):
+            raise SyntaxError("If an argument is passed to PF without a keyword, it must be a string.")
+        # Analyse the string
+        theStr = args[0]
+        if not '(' in theStr:
+            raise SyntaxError("No pf found in %s" % theStr)
+        if not ')' in theStr:
+            raise SyntaxError("Paranthesis is not closed in %s" % theStr)
+        func_name = theStr.split('(')[0].strip()
+        if '=' in func_name:
+            self.name = func_name.split('=')[0].strip().lstrip()
+            self.norm.name = 'norm_%s' % self.name
+            self.logger.debug("Found PF name %s", self.name)
+            func_name = func_name.split('=')[1]
+        if len(func_name.split()): func_name = func_name.split()[-1]
+        if not func_name in scipy.stats.__all__:
+            raise SyntaxError("%s is not found in scipy.stats" % func_name)
+        self.logger.debug("Found scipy.stats function named %s",func_name)
+        rvNames  = theStr.split('(')[1].split(')')[0].strip().lstrip()
+        parNames = rvNames
+        if ';' in rvNames:
+            rvNames  = rvNames.split(';')[0].strip().lstrip()
+            parNames = parNames.split(';')[1].strip().lstrip()
+        elif '|' in rvNames:
+            rvNames  = rvNames.split('|')[0].strip().lstrip()
+            parNames = parNames.split('|')[1].strip().lstrip()
+        else:
+            parNames = None
+        for rv_name in rvNames.split(','):
+            if not rv_name in self.rv_names():
+                self.rvs.append([rv_name,-np.inf,np.inf,RV.UNKNOWN])
+        lpars = []
+        if parNames != None:
+            for par_name in parNames.split(','):
+                lpars.append(par_name.strip().lstrip())
+        self._declare(func_name,lpars)
+        return True
+
+    def _check_kwargs_syntax(self, kwargs, foundArgs):
+        if not len(kwargs): return False
+        if 'name' in kwargs:
+            if self.name != None:
+                raise SyntaxError("self.name is already set to %s" % self.name)
+            self.name = kwargs['name']
+            self.norm.name = 'norm_%s' % self.name
+            for par in self.params:
+                if par.name == None: continue
+                if not par.name in _dparams: continue
+                _dparams[par.name]['pfs'].append(self.name)
+        if not foundArgs and not 'func' in kwargs:
+            raise SyntaxError("You cannot declare a PF without specifying a function to caracterize it.")
+        if 'func' in kwargs:
+            if self.func != None:
+                raise SyntaxError("self.func already exists.")
+            self.func = kwargs['func']
+            if type(self.func) == list:
+                self.pftype = PF.DERIVED
+                for ele in self.func:
+                    if not isinstance(ele, PF): continue
+                    for par in ele.params:
+                        if not par in self.params: self.params.append(par)
+                    for rv in ele.rvs:
+                        if not rv[0] in self.rv_names():
+                            self.rvs.append(rv)
+            else:
+                self.pftype = PF.RAW
+        if 'param' in kwargs:
+            if len(self.params) != 0: 
+                raise SyntaxError("self.params are already declared.")
+            if not isinstance(kwargs['params'], list):
+                raise SyntaxError("params should be a list.")
+            self.params = kwargs['params']
+            for par in self.params:
+                if par.name == None or self.name == None: continue
+                if not par.name in _dparams: continue
+                _dparams[par.name]['pfs'].append(self.name)
+        for param in self.params:
+            if param.name in kwargs and kwargs[param.name] != param.value:
+                param.value = kwargs[param.name]
+                self.logger.debug('%s value is updated to %f',
+                                  param.name,param.value)
+        return True
+
+    def _declare(self, func_name, lpars):
+        # Declare functional form of PF (no shape parameter specified yet)
+        self.func = getattr(scipy.stats,func_name)
+        self.pftype = PF.RAW
+        # Declare/Update parameters
+        for parStr in lpars:
+            parName = parStr.split('=')[0].strip().lstrip()
+            parVal = 0.
+            if '=' in parStr:
+                parVal = float(parStr.split('=')[1].strip().lstrip())
+            if not parName in _dparams:
+                _dparams[parName] = {'rvs':[],'pfs':[]}
+                _dparams[parName]['obj'] = Param(name=parName,value=parVal)
+            if self.name != None:
+                if not self.name in _dparams[parName]['pfs']:
+                    _dparams[parName]['pfs'].append(self.name)
+            else:
+                if not self in _dparams[parName]['pfs']:
+                    _dparams[parName]['pfs'].append(self)
+            self.params.append(_dparams[parName]['obj'])
+        return
+
+    def _get_add_norm_params(self):
+        norm_params = []
+        if self.pftype == PF.DERIVED and self.func[0] == operator.add:
+            for ele in self.func:
+                if not isinstance(ele, PF): continue
+                raw_norm_params += ele._get_add_norm_params()
+        elif self.norm.partype == PF.RAW:
+            norm_params.append(self)
+        return norm_params
+
+    def _get_param_values(self, **kwargs):
+        param_values = [0.] * len(self.params)
+        for ipar,param in enumerate(self.params):
+            if param.name in kwargs and kwargs[param.name] != param.value:
+                param.value = kwargs[param.name]
+                self.logger.debug('%s value is updated to %f',
+                                  param.name,param.value)
+            param_values[ipar] = param.value
+        return param_values
+
+    def _get_rv_values(self, *args, **kwargs):
+        rv_values = None
+        if len(args):
+            rv_values = args
+        else:
+            rv_values = []
+            for rv_name in self.rv_names():
+                if rv_name in kwargs: rv_values.append(kwargs[rv_name])
+        if self.pftype == PF.RAW and len(rv_values) != len(self.rvs):
+            raise SyntaxError('Provide %s input arguments for rvs' % 
+                              len(self.rvs))
+        if type(rv_values[0]) == float:
+            self.logger.debug('rv values=%s', rv_values)
+        return rv_values
+
+    def _leastsq_function(self, params, xdata, ydata, weight, dx):
+        """Function used by scipy.optimize.leastsq"""
+        # Update values of non-const PF parameters
+        for ipar,par in enumerate(self._free_params):
+            par.unbound_to_bound(params[ipar])
+        # Return delta = (PF(x) - y)/sigma
+        delta = weight * (self(xdata) * dx - ydata)
+        return delta
+
+    def _nllf(self, params, data):
+        """Evaluate the negative log-likelihood function using unbound 
+        parameters"""
+        # Update values of non-const PF parameters
+        for ipar,par in enumerate(self._free_params):
+            par.unbound_to_bound(params[ipar])
+        # Compute nllf
+        if isinstance(data, tuple):
+            nllf = -1 * np.sum(self.logpf(*data))
+        else:
+            nllf = -1 * np.sum(self.logpf(data))
+        return nllf
+
+class RV(object):
+    """Base class to define a Random Variable. 
+
+       Attributes
+       ----------
+       name : str
+           Random Variable name
+       pf : statspy.core.PF
+           Probability Function object associated to a Random Variable
+       params : statspy.core.Param list
+           List of shape parameters used to define the pf
+       isuptodate : bool
+           Tells whether associated PF needs to be normalised or not
+       logger : logging.Logger
+           message logging system
+
+       Examples:
+       ---------
+       >>> import statspy as sp 
+       >>> x = sp.RV("norm(x|mu=10,sigma=2)")
+    """
+    # Define the different random value types
+    (UNKNOWN,CONTINUOUS,DISCRETE) = (0,10,100)
+
+    def __init__(self,*args,**kwargs):
+        self.name = ""
+        self.pf = None
+        self.params = []
+        self.isuptodate = True
+        self.logger = logging.getLogger('statspy.core.RV')
+        try:
+            self.logger.debug('args = %s, kwargs = %s',args,kwargs)
+            foundArgs = self._check_args_syntax(args)
+            self._check_kwargs_syntax(kwargs,foundArgs)
+        except:
+            raise
+
+    def pf(self,x,**kwargs):
+        """Evaluate Probability (Mass/Density) Function in x
+
+        Parameters
+        ----------
+        x : float, ndarray
+            Random Variable value(s)
+        kwargs : dictionary, optional
+            Shape parameters values
+
+        """
+        if type(x) == float:
+            self.logger.debug('x=%f,shape_values=%s',x,kwargs)
+        return self._pf(x,**kwargs)
+
+    def _check_args_syntax(self,args):
+        if not len(args): return False
+        if not isinstance(args[0],str):
+            raise SyntaxError("If an argument is passed to PF without a keyword, it must be a string.")
+        # Analyse the string
+        theStr = args[0]
+        if '=' in theStr:
+            self.name = theStr.split('=')[0].strip().lstrip()
+            self.logger.debug("Found PF name %s", self.name)
+            theStr = theStr.split('=')[1]
+        if not '(' in theStr:
+            raise SyntaxError("No pf found in %s" % theStr)
+        if not ')' in theStr:
+            raise SyntaxError("Paranthesis is not closed in %s" % theStr)
+        func_name = theStr.split('(')[0].strip()
+        if len(func_name.split()): func_name = func_name.split()[-1]
+        if not func_name in scipy.stats.__all__:
+            raise SyntaxError("%s is not found in scipy.stats" % func_name)
+        self.logger.debug("Found scipy.stats function named %s",func_name)
+        rvNames  = theStr.split('(')[1].split(')')[0].strip().lstrip()
+        parNames = rvNames
+        if ';' in rvNames:
+            rvNames  = rvNames.split(';')[0].strip().lstrip()
+            parNames = parNames.split(';')[1].strip().lstrip()
+        elif '|' in rvNames:
+            rvNames  = rvNames.split('|')[0].strip().lstrip()
+            parNames = parNames.split('|')[1].strip().lstrip()
+        else:
+            parNames = None
+        lrvs = []
+        for rv_name in rvNames.split(','):
+            lpars.append(rv_name.strip().lstrip())
+        lpars = []
+        if parNames != None:
+            for par_name in parNames.split(','):
+                lpars.append(par_name.strip().lstrip())
+        self._declare(func_name,lrvs,lpars)
+        return True
+
+    def _check_kwargs_syntax(self,kwargs,foundArgs):
+        if not len(kwargs): return False
+        if not foundArgs and not 'pf' in kwargs:
+            raise SyntaxError("You cannot declare a Random Variable without specifying a pf.")
+        if 'name' in kwargs: self.name = kwargs['name']
+        if 'pf' in kwargs: self.pf = kwargs['pf']
+        if 'params' in kwargs: self.params = kwargs['params']
+        for param in self.params:
+            if param.name in kwargs and kwargs[param.name] != param.value:
+                param.value = kwargs[param.name]
+                self.logger.debug('%s value is updated to %f',
+                                  param.name,param.value)
+        return True
+
+    def _declare(self,pfName,rvName,lpars):
+        # Set/Update Random Variable name
+        self.name = rvName
+        # Declare/Update parameters
+        for parStr in lpars:
+            parName = parStr.split('=')[0].strip().lstrip()
+            parVal = 0.
+            if '=' in parStr:
+                parVal = float(parStr.split('=')[1].strip().lstrip())
+            if not parName in _dparams:
+                _dparams[parName] = {'rvs':[],'pfs':[]}
+                _dparams[parName]['obj'] = Param(name=parName,value=parVal)
+            if not self.name in _dparams[parName]['rvs']:
+                _dparams[parName]['rvs'].append(self.name)
+            self.params.append(_dparams[parName]['obj'])
+        # Declare pf (no shape parameter specified yet)
+        self._pf = getattr(scipy.stats,pfName)
+        return
 
 def check_method_exists(obj=None, name=""):
     if obj == None:
