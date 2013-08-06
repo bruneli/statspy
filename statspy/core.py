@@ -27,6 +27,7 @@ _ch = logging.StreamHandler() # Console handler
 _formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 _ch.setFormatter(_formatter)
 logger.addHandler(_ch)
+logger.debug('logger has been set to DEBUG mode')
 
 class Param(object):
     """Base class to define a PF shape parameter. 
@@ -545,7 +546,6 @@ class Param(object):
             else:
                 strform = '(%s) %s (%s)' % (par1_strform, op, par2_strform)
         return strform
-logger.debug('logger has been set to DEBUG mode')
 
 class PF(object):
     """Base class to define a Probability Function. 
@@ -573,6 +573,10 @@ class PF(object):
            from 1 when the PF is fitted to data.
        isuptodate : bool
            Tells whether PF needs to be normalized or not
+       options : dict
+           Potential list of options
+       pftype : PF.RAW or PF.DERIVED
+           Tells whether a PF is a RAW PF or DERIVED from other PFs
        logger : logging.Logger
            message logging system
 
@@ -592,10 +596,12 @@ class PF(object):
         self.rvs = []
         self.norm = Param(value=1., const=True)
         self.isuptodate = False
-        self.logger = logging.getLogger('statspy.core.PF')
+        self.options = kwargs.get('options', {})
         self.pftype = PF.RAW
+        self.logger = logging.getLogger('statspy.core.PF')
         self._free_params = []
         self._pcov = None
+        self._cache = None
         try:
             self.logger.debug('args = %s, kwargs = %s',args,kwargs)
             foundArgs = self._check_args_syntax(args)
@@ -806,7 +812,7 @@ class PF(object):
         #  - in case of a RAW PF, call directly the scipy function
         return self.norm.value * self.func.cdf(rv_values[0], *param_values)
 
-    def convolve(self, other, mode='fft'):
+    def convolve(self, other, **kw):
         """Convolve two PFs which is same as adding two random variables.
 
         The scipy.signal package is used to perform the convolution with
@@ -816,10 +822,13 @@ class PF(object):
         ----------
         self : PF
         other : PF
-        mode : str
-            Way to perform the convolution. If mode is equal to:
-            - 'fft' then scipy.signal.fftconvolve is used
-            - 'num' then scipy.signal.convolve is used
+        kw : keywork arguments, dict
+            May be:
+            - options : str
+                Way to perform the convolution. If mode is equal to:
+                - 'fft' then scipy.signal.fftconvolve is used
+                - 'num' then scipy.signal.convolve is used
+                - 'rvs' then random variates are used to generate the PF
 
         returns
         -------
@@ -828,11 +837,9 @@ class PF(object):
 
         """
         try:
-            if not (mode == 'fft' or mode == 'num'):
-                raise SyntaxError('mode should be fft or num.')
-            if len(self.rvs) != len(other.rvs):
-                raise SyntaxError('self and other should have the same number of rvs.')
-            new = PF(func=['rvadd_%d' % mode, self, other])
+            if not 'mode' in kw: kw['mode'] = 'fft'
+            new = PF(func=['rvadd_%s' % mode, self, other],
+                     options=kw)
         except:
             raise
         return new
@@ -1297,6 +1304,21 @@ class PF(object):
         #  - in case of a RAW PF, call directly the scipy function
         return self.norm.value * self.func.sf(rv_values[0], *param_values)
 
+    def _build_cache(self, rv_values=None):
+        if not isinstance(self.func, list):
+            raise SyntaxError('_build_cache, self.func is not a list.')
+        if len(self.func) < 3:
+            raise SyntaxError('self.func has a size lower than 3.')
+        if type(self.func[0]) != str:
+            raise SyntaxError('First element of self.func should be a str.')
+        if len(self.func[1].rvs) != len(self.func[2].rvs):
+            raise SyntaxError('self and other should have the same number of rvs.')
+        for rv1,rv2 in zip(self.func[1].rvs,self.func[2].rvs):
+            if rv1[3] == rv2[3]: continue
+            raise SyntaxError('%s and %s should be of the same type.' % (rv1[0], rv2[0]))
+        (getattr(self, ('_'+self.func[0])))(rv_values)
+        return
+
     def _check_args_syntax(self, args):
         if not len(args): return False
         if not isinstance(args[0],str):
@@ -1363,6 +1385,9 @@ class PF(object):
                     for rv in ele.rvs:
                         if not rv[0] in self.rv_names():
                             self.rvs.append(rv)
+                if len(self.func) > 1 and type(self.func[0]) == str:
+                    # Tricky operators like convolution requiring a cache
+                    self._build_cache()
             else:
                 self.pftype = PF.RAW
         if 'param' in kwargs:
@@ -1460,6 +1485,14 @@ class PF(object):
         else:
             nllf = -1 * np.sum(self.logpf(data))
         return nllf
+
+    def _rvadd(self, rv_values=None):
+        """Convolute numerically two PFs and store the result in _cache."""
+        bounds = []
+        for rv1,rv2 in zip(self.func[1].rvs,self.func[2].rvs):
+            if rv1[1] == -np.inf or rv2[1] == -np.inf:
+                a = -np.inf
+        return
 
 class RV(object):
     """Base class to define a Random Variable. 
