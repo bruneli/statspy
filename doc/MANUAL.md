@@ -5,7 +5,7 @@ StatsPy Users Guide
 
 ## Introduction
 
-StatsPy is a python based statistical package aimed to help users to build conveniently relatively complex probability functions which can be used later to fit to data, perform statistical tests or extract confidence intervals. StatsPy is originally inspired from the RooFit/RooStats packages used in High Energy Physics within the CERN ROOT analysis framework. The main two motivations for creating a new tool were to build a framework directly from python and thus oriented toward the "pythonic" scripting style, and to create a package built on top of the widely used NumPy/SciPy scientific stack.
+StatsPy is a python based statistical package aimed to help users to build conveniently relatively complex probability functions which can be used later to fit to data, perform statistical tests or extract confidence intervals. StatsPy is originally inspired from the [RooFit](http://root.cern.ch/drupal/content/roofit)/[RooStats](https://twiki.cern.ch/twiki/bin/view/RooStats) packages used in High Energy Physics within the [CERN ROOT analysis framework](http://root.cern.ch/drupal/). The main two motivations for creating a new tool were to build a framework directly from python and thus oriented toward the "pythonic" scripting style, and to create a package built on top of the widely used [NumPy/SciPy](http://docs.scipy.org/doc/) scientific stack.
 
 The package development is yet at its beginning and currently focused on the main elements to build conveniently a probability function. 
 
@@ -17,7 +17,7 @@ As many packages, StatsPy relies heavily on acronyms. The main ones are used to 
 
 * **PF = Probability Function**, a generic name, following Kendall's Advanced Theory of Statistics, referring both to Probability Density Functions (PDF/pdf) in the case of continuous random variables and to Probability Mass Functions (PMF/pmf) for discrete random variables.
 * **RV = Random Variable**, which is self explanatory.
-* **Param**eters denote quantities that appear specifically in the specification of the probability function. In the present package, any function of parameters will be also named a parameter, and such quantities are named *derived* in opposition with *raw* parameters.
+* **Param**eters denote quantities that appear specifically in the specification of the probability function. In the present package, any function of parameters will be also named a parameter, and such quantities are named *derived* in opposition to *raw* parameters.
 
 ### Probability Functions
 
@@ -37,9 +37,9 @@ In this case the whole PF is defined via the string argument
         >>> mypdf.name
         pdf_norm
 
-* `norm` is a keyword referring to the `scipy.stats.norm` function which is used to compute the actual value of the PF. Any pdf or pmf defined in scipy.stats module can be used as a keyword. The statistical function should be followed by parenthesis.
+* `norm` is a keyword referring to the [scipy.stats.norm](http://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.norm.html#scipy.stats.norm) function which is used to compute the actual value of the PF. Any pdf or pmf defined in the [scipy.stats](http://docs.scipy.org/doc/scipy/reference/stats.html) module can be used as a keyword. The statistical function should be followed by parenthesis.
 * Within the parenthesis, the first part should be used to define the name of the random variable(s), `x`, in the case above.
-* The second part of the parenthesis defines the list of shape parameters used to define a normal distribution, i.e. its mean and its rms. Their order should follow the one used by the `scipy.stats.norm` function. The shape parameters are separated from the random variables via the ";" or "|" characters. If a shape parameter is new, it is automatically declared and registered within some internal dictionary. If a shape parameter has already been declared, the PF is linked toward it. It is possible to retrieve a Parameter via the function `get_obj(name)`:
+* The second part of the parenthesis defines the list of shape parameters used to define a normal distribution, i.e. its mean and its rms. Their order should follow the one used by the [scipy.stats.norm](http://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.norm.html#scipy.stats.norm) function. The shape parameters are separated from the random variables via the ";" or "|" characters. If a shape parameter is new, it is automatically declared and registered within some internal dictionary. If a shape parameter has already been declared, the PF is linked toward it. It is possible to retrieve a Parameter via the function `get_obj(name)`:
 
         >>> mu = sp.get_obj("mu")
         >>> mu.value

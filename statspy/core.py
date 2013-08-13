@@ -11,8 +11,10 @@ import logging
 import math
 import numpy as np
 import operator
-import scipy.stats
+import scipy.interpolate
 import scipy.optimize
+import scipy.signal
+import scipy.stats
 
 __all__ = ['Param','PF','RV','logger','get_obj']
 
@@ -565,9 +567,6 @@ class PF(object):
            other PFs.
        params : statspy.core.Param list
            List of shape parameters used to define the pf
-       rvs : list
-           List of random variables stored in list as [name, lower bound, 
-           upper bound, variable type]
        norm : Param
            Normalization parameter set to 1 by default. It can be different
            from 1 when the PF is fitted to data.
@@ -590,30 +589,33 @@ class PF(object):
     (RAW,DERIVED) = (0,10)
 
     def __init__(self,*args,**kwargs):
+        # Public class members
         self.name = None
         self.func = None
         self.params = []
-        self.rvs = []
         self.norm = Param(value=1., const=True)
         self.isuptodate = False
         self.options = kwargs.get('options', {})
         self.pftype = PF.RAW
         self.logger = logging.getLogger('statspy.core.PF')
+        # Internal class members
+        self._cache = None
         self._free_params = []
         self._pcov = None
-        self._cache = None
+        self._rvs = []
+        self._spline = None
         try:
             self.logger.debug('args = %s, kwargs = %s',args,kwargs)
             foundArgs = self._check_args_syntax(args)
             self._check_kwargs_syntax(kwargs,foundArgs)
             if isinstance(self.func, scipy.stats.distributions.rv_generic):
                 self.isuptodate = True
-                self.rvs[0][1] = self.func.a # Lower bound
-                self.rvs[0][2] = self.func.b # Upper bound
+                self._rvs[0][1] = self.func.a # Lower bound
+                self._rvs[0][2] = self.func.b # Upper bound
                 if isinstance(self.func, scipy.stats.rv_discrete):
-                    self.rvs[0][3] = RV.DISCRETE
+                    self._rvs[0][3] = RV.DISCRETE
                 elif isinstance(self.func, scipy.stats.rv_continuous):
-                    self.rvs[0][3] = RV.CONTINUOUS
+                    self._rvs[0][3] = RV.CONTINUOUS
         except:
             raise
 
@@ -712,16 +714,25 @@ class PF(object):
         if self.pftype == PF.DERIVED:
             if not isinstance(self.func, list) or len(self.func) != 3:
                 raise SyntaxError('DERIVED function is not recognized.')
-            op = self.func[0]
-            vals = [0.,0.]
-            for idx in [1,2]:
-                the_args = []
-                for irv,rv in enumerate(self.rvs):
-                    if rv[0] in self.func[idx].rv_names():
-                        the_args.append(rv_values[irv])
-                vals[idx-1] = self.func[idx](*the_args, **kwargs)
-            value = self.norm.value * op(vals[0],vals[1])
-            return value
+            op = self.func[0] # operator
+            if type(op) == str:
+                redocache = not self.isuptodate or self._spline == None
+                for name,value in zip(self.rv_names(), rv_values):
+                    if (np.amin(value) < np.amin(self._cache[name]) or
+                        np.amax(value) > np.amax(self._cache[name])):
+                        redocache = True
+                if redocache: self._build_cache(*rv_values)
+                return self.norm.value * self._spline(*rv_values)
+            else:
+                vals = [0.,0.]
+                for idx in [1,2]:
+                    the_args = []
+                    for irv,rv in enumerate(self._rvs):
+                        if rv[0] in self.func[idx].rv_names():
+                            the_args.append(rv_values[irv])
+                    vals[idx-1] = self.func[idx](*the_args, **kwargs)
+                value = self.norm.value * op(vals[0],vals[1])
+                return value
         #  - in case of a RAW PF, call directly the scipy function
         if method_name == 'pmf': 
             return self.norm.value * self.func.pmf(rv_values[0],
@@ -803,7 +814,7 @@ class PF(object):
             vals = [0.,0.]
             for idx in [1,2]:
                 the_args = []
-                for irv,rv in enumerate(self.rvs):
+                for irv,rv in enumerate(self._rvs):
                     if rv[0] in self.func[idx].rv_names():
                         the_args.append(rv_values[irv])
                 vals[idx-1] = self.func[idx].cdf(*the_args, **kwargs)
@@ -838,8 +849,7 @@ class PF(object):
         """
         try:
             if not 'mode' in kw: kw['mode'] = 'fft'
-            new = PF(func=['rvadd_%s' % mode, self, other],
-                     options=kw)
+            new = PF(func=['rvadd', self, other], options=kw)
         except:
             raise
         return new
@@ -941,6 +951,11 @@ class PF(object):
                     if raw_par in self._free_params: continue
                     self._free_params.append(raw_par)
         return self._free_params
+
+    def kurtosis(self, **kw):
+        """Estimate the kurtosis of the PF. See PF.mean() for the syntax."""
+        kurtosis = self._estimate('k', scipy.stats.kurtosis, **kw)
+        return kurtosis
 
     def leastsq_fit(self, xdata, ydata, ey=None, dx=None, cond=None, **kw):
         """Fit the PF to data using a least squares method.
@@ -1066,7 +1081,7 @@ class PF(object):
                 vals = [0.,0.]
                 for idx in [1,2]:
                     the_args = []
-                    for irv,rv in enumerate(self.rvs):
+                    for irv,rv in enumerate(self._rvs):
                         if rv[0] in self.func[idx].rv_names():
                             the_args.append(rv_values[irv])
                     vals[idx-1] = self.func[idx].logpf(*the_args, **kwargs)
@@ -1126,6 +1141,28 @@ class PF(object):
             par.value = val2
         nllfmin = self.nllf(data)
         return self._free_params, nllfmin
+
+    def mean(self, **kw):
+        """Estimate the mean of the PF.
+
+        Warning:
+        - In the case of a RAW PF from scipy.stats, it calls the stats 
+        method and therefore returns the expected value.
+        - In the case of a DERIVED PF, it returns an estimate derived from 
+        random variates.
+
+        Parameters
+        ----------
+        kw : keywork arguments, optional
+            Shape parameters values
+
+        Returns
+        -------
+        mean : ndarray
+
+        """
+        mean = self._estimate('m', np.mean, **kw)
+        return mean
 
     def nllf(self, data, **kw):
         """Evaluate the negative log-likelihood function
@@ -1210,6 +1247,14 @@ class PF(object):
         pllr = 2. * (cond_nllf - uncond_nllf)
         return pllr
 
+    def rvadd(self, other, **kw):
+        """Operation equivalent to adding two random variables."""
+        try:
+            new = self.convolve(other, **kw)
+        except:
+            raise
+        return new
+
     def rvs(self, **kwargs):
         """Get random variates from a PF
 
@@ -1234,14 +1279,33 @@ class PF(object):
         """
         try:
             if isinstance(self.func, list):
-                if len(self.func) == 3 and self.func[0] == operator.add:
-                    data1 = self.func[1].rvs(**kwargs)
-                    data2 = self.func[2].rvs(**kwargs)
-                    data3 = scipy.stats.uniform.rvs(size=len(data1))
-                    cond = (data3 < self.func[1].norm.value)
-                    data = cond * data1 + (1 - cond) * data2
+                if len(self.func) == 3:
+                    if self.func[0] == operator.add:
+                        data1 = self.func[1].rvs(**kwargs)
+                        data2 = self.func[2].rvs(**kwargs)
+                        data3 = scipy.stats.uniform.rvs(size=len(data1))
+                        cond = (data3 < self.func[1].norm.value)
+                        data = cond * data1 + (1 - cond) * data2
+                    elif self.func[0] == 'rvadd':
+                        data1 = self.func[1].rvs(**kwargs)
+                        data2 = self.func[2].rvs(**kwargs)
+                        data = data1 + data2
+                    elif self.func[0] == 'rvsub':
+                        data1 = self.func[1].rvs(**kwargs)
+                        data2 = self.func[2].rvs(**kwargs)
+                        data = data1 - data2
+                    elif self.func[0] == 'rvmul':
+                        data1 = self.func[1].rvs(**kwargs)
+                        data2 = self.func[2].rvs(**kwargs)
+                        data = data1 * data2
+                    elif self.func[0] == 'rvdiv':
+                        data1 = self.func[1].rvs(**kwargs)
+                        data2 = self.func[2].rvs(**kwargs)
+                        data = data1 / data2
+                    else:
+                        raise NotImplementedError('Not yet implemented...')
                 else:
-                    raise NotImplementedError('Not yet possible...')
+                    raise NotImplementedError('Not yet implemented...')
             else:
                 method_name = "rvs"
                 check_method_exists(obj=self.func,name=method_name)
@@ -1255,9 +1319,18 @@ class PF(object):
             raise
         return data
 
+    def rvsub(self, other, **kw):
+        """Operation equivalent to subtracting two random variables."""
+        try:
+            if not 'mode' in kw: kw['mode'] = 'fft'
+            new = PF(func=['rvsub', self, other], options=kw)
+        except:
+            raise
+        return new
+
     def rv_names(self):
         """Return a list of RV names."""
-        rv_names = [ rv[0] for rv in self.rvs ]
+        rv_names = [ rv[0] for rv in self._rvs ]
         return rv_names
 
     def sf(self, *args, **kwargs):
@@ -1295,7 +1368,7 @@ class PF(object):
             vals = [0.,0.]
             for idx in [1,2]:
                 the_args = []
-                for irv,rv in enumerate(self.rvs):
+                for irv,rv in enumerate(self._rvs):
                     if rv[0] in self.func[idx].rv_names():
                         the_args.append(rv_values[irv])
                 vals[idx-1] = self.func[idx].sf(*the_args, **kwargs)
@@ -1304,6 +1377,22 @@ class PF(object):
         #  - in case of a RAW PF, call directly the scipy function
         return self.norm.value * self.func.sf(rv_values[0], *param_values)
 
+    def skew(self, **kw):
+        """Estimate the skewness of the PF. See PF.mean() for the syntax."""
+        skew = self._estimate('s', scipy.stats.skew, **kw)
+        return skew
+
+    def std(self, **kw):
+        """Estimate the standard deviation of the PF.
+        See PF.mean() for the syntax."""
+        var = self._estimate('v', np.var, **kw)
+        return np.sqrt(var)
+
+    def var(self, **kw):
+        """Estimate the variance of the PF. See PF.mean() for the syntax."""
+        var = self._estimate('v', np.var, **kw)
+        return var
+
     def _build_cache(self, rv_values=None):
         if not isinstance(self.func, list):
             raise SyntaxError('_build_cache, self.func is not a list.')
@@ -1311,12 +1400,55 @@ class PF(object):
             raise SyntaxError('self.func has a size lower than 3.')
         if type(self.func[0]) != str:
             raise SyntaxError('First element of self.func should be a str.')
-        if len(self.func[1].rvs) != len(self.func[2].rvs):
+        if len(self.func[1]._rvs) != len(self.func[2]._rvs):
             raise SyntaxError('self and other should have the same number of rvs.')
-        for rv1,rv2 in zip(self.func[1].rvs,self.func[2].rvs):
+        for rv1,rv2 in zip(self.func[1]._rvs,self.func[2]._rvs):
             if rv1[3] == rv2[3]: continue
             raise SyntaxError('%s and %s should be of the same type.' % (rv1[0], rv2[0]))
-        (getattr(self, ('_'+self.func[0])))(rv_values)
+        (getattr(self, ('_'+self.func[0])))(rv_values=rv_values)
+        self.isuptodate = True
+        return
+
+    def _build_cache_rvs(self):
+        """Generate random variates and build an histogram"""
+        size0 = max(10**6, 100000 * 10**(len(self._rvs) - 1))
+        size = self.options.get('size', size0)
+        data = self.rvs(size=size)
+        if self._rvs[0][3] == RV.DISCRETE:
+            xmin = data.min() - 0.5
+            xmax = data.max() + 0.5
+            nbins = xmax - xmin
+            pf, bins = np.histogram(data, bins=nbins, range=(xmin, xmax))
+        else:
+            pf, bins = np.histogram(data, bins=100)
+        rv_name = self._rvs[0][0]
+        dtype = [(rv_name,float),('pf',float)]
+        self._cache = np.recarray(pf.shape, dtype=dtype)
+        self._cache[rv_name] = 0.5*(bins[1:] + bins[:-1]) # Bin centers
+        self._cache.pf = pf                               # Bin contents
+        if self._rvs[0][3] == RV.CONTINUOUS:
+            dx = bins[1:] - bins[:-1]                     # Bin widths
+            integral = (self._cache.pf * dx).sum()
+        else:
+            integral = (self._cache.pf).sum()
+        self.norm.value = 1. / integral
+
+    def _build_spline(self):
+        if self._cache == None:
+            raise SyntaxError('cache is empty, cannot build the spline')
+        if len(self._rvs) > 2: return
+        if len(self._rvs) == 1:
+            name = self._rvs[0][0]
+            method = self.options.get('spline',
+                                      scipy.interpolate.UnivariateSpline)
+            self._spline = method(self._cache[name], self._cache.pf)
+        elif len(self._rvs) == 2:
+            method = self.options.get('spline',
+                                      scipy.interpolate.RectBivariateSpline)
+            name1 = self._rvs[0][0]
+            name2 = self._rvs[1][0]
+            self._spline = method(self._cache[name1], self._cache[name2],
+                                  self._cache.pf)
         return
 
     def _check_args_syntax(self, args):
@@ -1351,7 +1483,7 @@ class PF(object):
             parNames = None
         for rv_name in rvNames.split(','):
             if not rv_name in self.rv_names():
-                self.rvs.append([rv_name,-np.inf,np.inf,RV.UNKNOWN])
+                self._rvs.append([rv_name,-np.inf,np.inf,RV.UNKNOWN])
         lpars = []
         if parNames != None:
             for par_name in parNames.split(','):
@@ -1382,9 +1514,9 @@ class PF(object):
                     if not isinstance(ele, PF): continue
                     for par in ele.params:
                         if not par in self.params: self.params.append(par)
-                    for rv in ele.rvs:
+                    for rv in ele._rvs:
                         if not rv[0] in self.rv_names():
-                            self.rvs.append(rv)
+                            self._rvs.append(rv)
                 if len(self.func) > 1 and type(self.func[0]) == str:
                     # Tricky operators like convolution requiring a cache
                     self._build_cache()
@@ -1429,6 +1561,24 @@ class PF(object):
             self.params.append(_dparams[parName]['obj'])
         return
 
+    def _estimate(self, stats, method, **kw):
+        if self.pftype == PF.RAW:
+            method_name = 'stats'
+            try:
+                check_method_exists(obj=self.func,name=method_name)
+                if not stats in ['m','v','s','k']:
+                    raise SyntaxError("stats str should be among ['mvsk']")
+            except:
+                raise
+            # Get shape parameters, optional
+            param_values = self._get_param_values(**kw)
+            estimate = self.func.stats(*param_values, moments=stats)
+        else:
+            if not 'size' in kw: kw['size'] = 10000
+            data = self.rvs(**kw)
+            estimate = method(data)
+        return estimate
+
     def _get_add_norm_params(self):
         norm_params = []
         if self.pftype == PF.DERIVED and self.func[0] == operator.add:
@@ -1438,6 +1588,29 @@ class PF(object):
         elif self.norm.partype == PF.RAW:
             norm_params.append(self)
         return norm_params
+
+    def _get_bounds(self):
+        bounds = []
+        for rv in self._rvs:
+            a = rv[1]
+            b = rv[2]
+            if a == -np.inf or b == np.inf:
+                nsigma = 10
+                mean = self.mean()
+                std  = self.std()
+                if a == -np.inf:
+                    c = mean - nsigma * std
+                else:
+                    c = a
+                if b == np.inf:
+                    d = mean + nsigma * std
+                else:
+                    d = b
+            else:
+                c = a
+                d = b
+            bounds.append([a, b, c, d])
+        return bounds
 
     def _get_param_values(self, **kwargs):
         param_values = [0.] * len(self.params)
@@ -1457,9 +1630,9 @@ class PF(object):
             rv_values = []
             for rv_name in self.rv_names():
                 if rv_name in kwargs: rv_values.append(kwargs[rv_name])
-        if self.pftype == PF.RAW and len(rv_values) != len(self.rvs):
+        if self.pftype == PF.RAW and len(rv_values) != len(self._rvs):
             raise SyntaxError('Provide %s input arguments for rvs' % 
-                              len(self.rvs))
+                              len(self._rvs))
         if type(rv_values[0]) == float:
             self.logger.debug('rv values=%s', rv_values)
         return rv_values
@@ -1487,11 +1660,93 @@ class PF(object):
         return nllf
 
     def _rvadd(self, rv_values=None):
-        """Convolute numerically two PFs and store the result in _cache."""
-        bounds = []
-        for rv1,rv2 in zip(self.func[1].rvs,self.func[2].rvs):
-            if rv1[1] == -np.inf or rv2[1] == -np.inf:
-                a = -np.inf
+        """Convolve numerically two PFs and store the result in _cache."""
+        mode = self.options.get('mode', 'fft')
+        if mode == 'num' or mode == 'fft':
+            # Get rv bounds
+            rv1_bounds = self.func[1]._get_bounds()
+            rv2_bounds = self.func[2]._get_bounds()
+            bounds = []
+            npts = self.options.get('npts', 1001)
+            for rv1,rv2 in zip(rv1_bounds,rv2_bounds):
+                if self.func[0] == 'rvadd':
+                    a = rv1[0] + rv2[0]
+                    b = rv1[1] + rv2[1]
+                    c = rv1[2] + rv2[2]
+                    d = rv1[3] + rv2[3]
+                else:
+                    a = rv1[0] - rv2[1]
+                    b = rv1[1] - rv2[0]
+                    c = rv1[2] - rv2[3]
+                    d = rv1[3] - rv2[2]
+                bounds.append([a, b, c, d])
+            # TODO, algo is problematic when > 1 rv
+            for rv,bound in zip(self._rvs,bounds):
+                if rv[3] == RV.CONTINUOUS: continue
+                bound[2] = a = round(bound[2])
+                bound[3] = b = round(bound[3])
+                if b - a + 1 > npts:
+                    step = round((b - a)/float(npts - 1))
+                    npts = (b - a)/step + 1
+                else:
+                    npts = b - a + 1
+            # Arrays of axis coordinates
+            dtype = []
+            for rv in self._rvs:
+                if rv[3] == RV.CONTINUOUS:
+                    dtype.append((rv[0],float))
+                else:
+                    dtype.append((rv[0],int))
+            dtype.append(('pf',float))
+            self._cache = np.recarray((npts,),dtype=dtype)
+            args = []
+            bin_area = 1.
+            step = None
+            for rv,bound in zip(self._rvs,bounds):
+                rv[1] = bound[0]
+                rv[2] = bound[1]
+                self._cache[rv[0]], step = np.linspace(bound[2], bound[3],
+                                                       num=npts, retstep=True)
+                bin_area *= step
+                args.append(self._cache[rv[0]])
+            # Evaluate pf values for both input pf
+            pf1 = self.func[1](*args)
+            pf2 = self.func[2](*args)
+            if self.func[0] == 'rvsub': pf2 = pf2[::-1]
+            # Perform the convolution
+            if mode == 'num':
+                pf = scipy.signal.convolve(pf1, pf2, mode='full')
+            else:
+                pf = scipy.signal.fftconvolve(pf1, pf2, mode='full')
+            if self.func[0] == 'rvsub': pf = pf[::-1]
+            if self.func[0] == 'rvadd' and self._rvs[0][1] != -np.inf:
+                start = 0
+            elif self.func[0] == 'rvsub':
+                start = int(pf.shape[0]) - int(3 * (npts - 1) - 1) / 2
+            else:
+                start = (npts - 2) / 2
+            print '\n\nnpts',start,npts,pf.shape,pf,'\n'
+            self._cache.pf = pf[start:start+npts]
+            if not 'spline' in self.options:
+                if len(self._rvs) == 1:
+                    self.options['spline'] = scipy.interpolate.interp1d
+                elif len(self._rvs) == 2:
+                    self.options['spline'] = scipy.interpolate.interp2d
+                else:
+                    self.options['spline'] = scipy.interpolate.griddata
+            integral = np.sum(self._cache.pf * bin_area)
+            self.norm.value = 1. / integral
+        elif len(self._rvs) == 1:
+            # Generate random variated and build an histogram
+            self._build_cache_rvs()
+        else:
+            raise NotImplementedError('Sorry, rvadd operation not valid...')
+        # Interpolate
+        self._build_spline()
+        return
+
+    def _rvsub(self, rv_values=None):
+        self._rvadd(rv_values=rv_values)
         return
 
 class RV(object):
@@ -1503,120 +1758,112 @@ class RV(object):
            Random Variable name
        pf : statspy.core.PF
            Probability Function object associated to a Random Variable
-       params : statspy.core.Param list
-           List of shape parameters used to define the pf
-       isuptodate : bool
-           Tells whether associated PF needs to be normalised or not
+       rvtype : RV.CONTINUOUS or RV.DISCRETE
+           Random Variable type
        logger : logging.Logger
            message logging system
 
        Examples:
        ---------
        >>> import statspy as sp 
-       >>> x = sp.RV("norm(x|mu=10,sigma=2)")
+       >>> X = sp.RV("norm(x|mu=10,sigma=2)")
     """
     # Define the different random value types
     (UNKNOWN,CONTINUOUS,DISCRETE) = (0,10,100)
 
-    def __init__(self,*args,**kwargs):
+    def __init__(self, *args, **kwargs):
         self.name = ""
         self.pf = None
-        self.params = []
-        self.isuptodate = True
+        self.rvtype = RV.UNKNOWN
         self.logger = logging.getLogger('statspy.core.RV')
         try:
-            self.logger.debug('args = %s, kwargs = %s',args,kwargs)
-            foundArgs = self._check_args_syntax(args)
-            self._check_kwargs_syntax(kwargs,foundArgs)
+            self.logger.debug('args = %s, kwargs = %s',args, kwargs)
+            foundArgs = self._check_args_syntax(args, kwargs)
+            self._check_kwargs_syntax(kwargs, foundArgs)
         except:
             raise
 
-    def pf(self,x,**kwargs):
-        """Evaluate Probability (Mass/Density) Function in x
+    def __add__(self, other):
+        """Add two random variables.
 
+        The associated PF of the sum of the two random variables is
+        a convolution of the two PFs.
+        Caveat: this method assumes *independent* random variables.
+        
         Parameters
         ----------
-        x : float, ndarray
-            Random Variable value(s)
-        kwargs : dictionary, optional
-            Shape parameters values
+        self : RV
+        other : RV
+
+        Returns
+        -------
+        new : RV
+             new RV which is the sum of self and other
+        
+        """
+        try:
+            new = RV(pf=self.rvadd(other))
+        except:
+            raise
+        return new
+
+    def __call__(self, **kwargs):
+        """Get random variates
+
+        Keyword arguments
+        -----------------
+        size : int
+             Number of random variates
+        mu, sigma,... : float
+             Any parameter name used while declaring the PF
+
+        Returns
+        -------
+        data : ndarray
+             Array of random variates
+
+        Examples
+        --------
+        >>> import statspy as sp
+        >>> X = sp.RV("norm(x;mu=20,sigma=5)")
+        >>> x = X(size=1000)
 
         """
-        if type(x) == float:
-            self.logger.debug('x=%f,shape_values=%s',x,kwargs)
-        return self._pf(x,**kwargs)
+        try:
+            if not isinstance(self.pf, PF):
+                raise SyntaxError('No PF associated to this random variable.')
+            data = self.pf.rvs(**kwargs)
+        except:
+            raise
+        return data
 
-    def _check_args_syntax(self,args):
+    def _check_args_syntax(self, args, kwargs):
         if not len(args): return False
         if not isinstance(args[0],str):
             raise SyntaxError("If an argument is passed to PF without a keyword, it must be a string.")
-        # Analyse the string
-        theStr = args[0]
-        if '=' in theStr:
-            self.name = theStr.split('=')[0].strip().lstrip()
-            self.logger.debug("Found PF name %s", self.name)
-            theStr = theStr.split('=')[1]
-        if not '(' in theStr:
-            raise SyntaxError("No pf found in %s" % theStr)
-        if not ')' in theStr:
-            raise SyntaxError("Paranthesis is not closed in %s" % theStr)
-        func_name = theStr.split('(')[0].strip()
-        if len(func_name.split()): func_name = func_name.split()[-1]
-        if not func_name in scipy.stats.__all__:
-            raise SyntaxError("%s is not found in scipy.stats" % func_name)
-        self.logger.debug("Found scipy.stats function named %s",func_name)
-        rvNames  = theStr.split('(')[1].split(')')[0].strip().lstrip()
-        parNames = rvNames
-        if ';' in rvNames:
-            rvNames  = rvNames.split(';')[0].strip().lstrip()
-            parNames = parNames.split(';')[1].strip().lstrip()
-        elif '|' in rvNames:
-            rvNames  = rvNames.split('|')[0].strip().lstrip()
-            parNames = parNames.split('|')[1].strip().lstrip()
-        else:
-            parNames = None
-        lrvs = []
-        for rv_name in rvNames.split(','):
-            lpars.append(rv_name.strip().lstrip())
-        lpars = []
-        if parNames != None:
-            for par_name in parNames.split(','):
-                lpars.append(par_name.strip().lstrip())
-        self._declare(func_name,lrvs,lpars)
+        self.pf = PF(*args, **kwargs)
+        if len(self.pf._rvs) != 1:
+            raise SyntaxError("One and only one RV should be found in %s." % args)
+        self.name = self.pf._rvs[0][0]
+        self.rvtype = self.pf._rvs[0][3]
+        if self.pf.name == None:
+            if self.rvtype == RV.CONTINUOUS:
+                self.pf.name = 'pdf_%s' % self.name
+            else:
+                self.pf.name = 'pmf_%s' % self.name
         return True
 
-    def _check_kwargs_syntax(self,kwargs,foundArgs):
+    def _check_kwargs_syntax(self, kwargs, foundArgs):
         if not len(kwargs): return False
         if not foundArgs and not 'pf' in kwargs:
             raise SyntaxError("You cannot declare a Random Variable without specifying a pf.")
-        if 'name' in kwargs: self.name = kwargs['name']
+        if 'name' in kwargs:
+            if self.name != None:
+                raise SyntaxError("self.name is already set to %s" % self.name)
+            self.name = kwargs['name']
         if 'pf' in kwargs: self.pf = kwargs['pf']
-        if 'params' in kwargs: self.params = kwargs['params']
-        for param in self.params:
-            if param.name in kwargs and kwargs[param.name] != param.value:
-                param.value = kwargs[param.name]
-                self.logger.debug('%s value is updated to %f',
-                                  param.name,param.value)
+        if 'rvtype' in kwargs: self.rvtype = kwargs['rvtype']
         return True
-
-    def _declare(self,pfName,rvName,lpars):
-        # Set/Update Random Variable name
-        self.name = rvName
-        # Declare/Update parameters
-        for parStr in lpars:
-            parName = parStr.split('=')[0].strip().lstrip()
-            parVal = 0.
-            if '=' in parStr:
-                parVal = float(parStr.split('=')[1].strip().lstrip())
-            if not parName in _dparams:
-                _dparams[parName] = {'rvs':[],'pfs':[]}
-                _dparams[parName]['obj'] = Param(name=parName,value=parVal)
-            if not self.name in _dparams[parName]['rvs']:
-                _dparams[parName]['rvs'].append(self.name)
-            self.params.append(_dparams[parName]['obj'])
-        # Declare pf (no shape parameter specified yet)
-        self._pf = getattr(scipy.stats,pfName)
-        return
 
 def check_method_exists(obj=None, name=""):
     if obj == None:
