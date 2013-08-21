@@ -1864,7 +1864,6 @@ class PF(object):
                     self.options['spline'] = scipy.interpolate.interp2d
                 else:
                     self.options['spline'] = scipy.interpolate.griddata
-            print '\n',self._cache[self._rvs[0][0]],self._cache.pf,self.options
             # Normalization factor
             integral = np.sum(self._cache.pf * bin_area)
             self.norm.value = 1. / integral
@@ -2133,7 +2132,7 @@ def check_method_exists(obj=None, name=""):
 
 def get_obj(obj_name):
     """Look in the different dictionaries if an object named obj_name exists
-    and return it."""
+    and returns it."""
     obj = None
     for obj_dict in (_drvs, _dpfs, _dparams):
         if not obj_name in obj_dict: continue

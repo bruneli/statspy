@@ -1,5 +1,5 @@
 """
-Statspy
+StatsPy
 =======
 
 Provides
@@ -8,10 +8,18 @@ Provides
 
 Getting started::
 
-  >>> import statspy as spy
-  >>> help(spy)
+  >>> import statspy as sp
+  >>> help(sp)
 
 """
+__version__ = "0.1.0a0"
+
+import sys
+if sys.version_info[0] == 2 and sys.version_info[1] < 6:
+    raise ImportError("Python version 2.6 or above is required for StatsPy.")
+else:
+    pass
+del sys
 
 # Import base classes
 import core
