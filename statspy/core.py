@@ -7,6 +7,7 @@ the different variables, parameters and probability functions declared.
 
 """
 
+import copy
 import logging
 import math
 import numpy as np
@@ -570,6 +571,10 @@ class PF(object):
        norm : Param
            Normalization parameter set to 1 by default. It can be different
            from 1 when the PF is fitted to data.
+       loc : Param (only for 1D PF)
+           Location parameter: x -> x + loc (None by default)
+       scale : Param (only for 1D PF)
+           Scale Parameter: x -> x * scale (None by default)
        isuptodate : bool
            Tells whether PF needs to be normalized or not
        options : dict
@@ -594,6 +599,8 @@ class PF(object):
         self.func = None
         self.params = []
         self.norm = Param(value=1., const=True)
+        self.loc = None
+        self.scale = None
         self.isuptodate = False
         self.options = kwargs.get('options', {})
         self.pftype = PF.RAW
@@ -710,8 +717,12 @@ class PF(object):
         # Get shape parameters, optional
         param_values = self._get_param_values(**kwargs)
         # Compute pf value in x
+        value = None
         #  - in case of a DERIVED PF, call an operator
-        if self.pftype == PF.DERIVED:
+        if (self.pftype == PF.DERIVED and isinstance(self.func, list) and
+            len(self.func) == 1 and isinstance(self.func[0], PF)):
+            value = self.func[0](*args, **kwargs)
+        elif self.pftype == PF.DERIVED:
             if not isinstance(self.func, list) or len(self.func) != 3:
                 raise SyntaxError('DERIVED function is not recognized.')
             op = self.func[0] # operator
@@ -722,7 +733,7 @@ class PF(object):
                         np.amax(value) > np.amax(self._cache[name])):
                         redocache = True
                 if redocache: self._build_cache(*rv_values)
-                return self.norm.value * self._spline(*rv_values)
+                value = self._spline(*rv_values)
             else:
                 vals = [0.,0.]
                 for idx in [1,2]:
@@ -731,13 +742,16 @@ class PF(object):
                         if rv[0] in self.func[idx].rv_names():
                             the_args.append(rv_values[irv])
                     vals[idx-1] = self.func[idx](*the_args, **kwargs)
-                value = self.norm.value * op(vals[0],vals[1])
-                return value
-        #  - in case of a RAW PF, call directly the scipy function
-        if method_name == 'pmf': 
-            return self.norm.value * self.func.pmf(rv_values[0],
-                                                   *param_values)
-        return self.norm.value * self.func.pdf(rv_values[0], *param_values)
+                value = op(vals[0],vals[1])
+        else:
+            #  - in case of a RAW PF, call directly the scipy function
+            if method_name == 'pmf': 
+                value = self.func.pmf(rv_values[0], *param_values)
+            else:
+                value = self.func.pdf(rv_values[0], *param_values)
+        if self.scale != None and self.scale.value != 0.:
+            value = value / self.scale.value
+        return self.norm.value * value
 
     def __mul__(self, other):
         """Multiply a PF by another PF.
@@ -807,7 +821,11 @@ class PF(object):
         param_values = self._get_param_values(**kwargs)
         # Compute cdf value in x
         #  - in case of a DERIVED PF, call an operator
-        if self.pftype == PF.DERIVED:
+        if (self.pftype == PF.DERIVED and isinstance(self.func, list) and
+            len(self.func) == 1 and isinstance(self.func[0], PF)):
+            value = self.norm.value * self.func[0].cdf(*args, **kwargs)
+            return value
+        elif self.pftype == PF.DERIVED:
             if not isinstance(self.func, list) or len(self.func) != 3:
                 raise SyntaxError('DERIVED function is not recognized.')
             op = self.func[0]
@@ -941,7 +959,10 @@ class PF(object):
                         if raw_par.const: continue
                         self._free_params.append(raw_par)
         # Get the list of shape parameters
-        for par in self.params:
+        params = copy.copy(self.params)
+        if self.loc != None: params.append(self.loc)
+        if self.scale != None: params.append(self.scale)
+        for par in params:
             if par.partype == Param.RAW and not par.const:
                 self._free_params.append(par)
             elif par.partype == Param.DERIVED:
@@ -1040,6 +1061,30 @@ class PF(object):
             pvalue = np.inf
         return self._free_params, self._pcov, chi2min, pvalue
 
+    def loc(self, loc):
+        """Derive a PF from another PF via a location parameter.
+        
+        parameters
+        ----------
+        self : PF
+        loc : Param, value
+
+        returns
+        -------
+        new : PF
+            new PF with x -> x + loc
+        
+        """
+        try:
+            new = PF(func=[self])
+            if isinstance(loc, Param):
+                new.loc = loc
+            else:
+                new.loc = Param(value=loc)
+        except:
+            raise
+        return new
+
     def logpf(self, *args, **kwargs):
         """Compute the logarithm of the PF in x.
 
@@ -1070,7 +1115,13 @@ class PF(object):
         # Get shape parameters, optional
         param_values = self._get_param_values(**kwargs)
         # Compute logpf value in x
+        value = None
         #  - in case of a DERIVED PF, call an operator
+        if (self.pftype == PF.DERIVED and isinstance(self.func, list) and
+            len(self.func) == 1 and isinstance(self.func[0], PF)):
+            value = self.func[0].logpf(*args, **kwargs)
+            if self.scale != None and self.scale.value != 0.:
+                value = value - self.scale.value
         if self.pftype == PF.DERIVED:
             if not isinstance(self.func, list) or len(self.func) != 3:
                 raise SyntaxError('DERIVED function is not recognized.')
@@ -1085,16 +1136,20 @@ class PF(object):
                         if rv[0] in self.func[idx].rv_names():
                             the_args.append(rv_values[irv])
                     vals[idx-1] = self.func[idx].logpf(*the_args, **kwargs)
-                value = self.norm.value + operator.add(vals[0],vals[1])
+                value = operator.add(vals[0],vals[1])
+                if self.scale != None and self.scale.value != 0.:
+                    value = value - self.scale.value
             else:
                 raise NotImplementedError('Not yet possible...')
-            return value
-        #  - in case of a RAW PF, call directly the scipy function
-        if method_name == 'logpmf':
-            return self.norm.value * self.func.logpmf(rv_values[0],
-                                                      *param_values)
-        return self.norm.value * self.func.logpdf(rv_values[0],
-                                                  *param_values)
+        else:
+            #  - in case of a RAW PF, call directly the scipy function
+            if method_name == 'logpmf':
+                value = self.func.logpmf(rv_values[0], *param_values)
+            else:
+                value = self.func.logpdf(rv_values[0], *param_values)
+            if self.scale != None and self.scale.value != 0.:
+                value = value - self.scale.value
+        return self.norm.value + value 
 
     def maxlikelihood_fit(self, data, **kw):
         """Fit the PF to data using the maximum likelihood estimator method.
@@ -1255,6 +1310,22 @@ class PF(object):
             raise
         return new
 
+    def rvdiv(self, other, **kw):
+        """Operation equivalent to dividing two random variables."""
+        try:
+            new = PF(func=['rvdiv', self, other], options=kw)
+        except:
+            raise
+        return new
+
+    def rvmul(self, other, **kw):
+        """Operation equivalent to multiplying two random variables."""
+        try:
+            new = PF(func=['rvmul', self, other], options=kw)
+        except:
+            raise
+        return new
+
     def rvs(self, **kwargs):
         """Get random variates from a PF
 
@@ -1278,8 +1349,10 @@ class PF(object):
 
         """
         try:
+            auto_loc = False
             if isinstance(self.func, list):
                 if len(self.func) == 3:
+                    auto_loc = True
                     if self.func[0] == operator.add:
                         data1 = self.func[1].rvs(**kwargs)
                         data2 = self.func[2].rvs(**kwargs)
@@ -1304,6 +1377,8 @@ class PF(object):
                         data = data1 / data2
                     else:
                         raise NotImplementedError('Not yet implemented...')
+                elif len(self.func) == 1 and isinstance(self.func[0], PF):
+                    data = self.func[0].rvs(**kwargs)
                 else:
                     raise NotImplementedError('Not yet implemented...')
             else:
@@ -1315,6 +1390,10 @@ class PF(object):
                         param.value = kwargs[param.name]
                     shape_params.append(param.value)
                 data = self.func.rvs(*shape_params, **kwargs)
+            if self.scale != None and self.scale.value != 0.:
+                data = data * self.scale.value
+            if self.loc != None and not auto_loc:
+                data = data + self.loc.value
         except:
             raise
         return data
@@ -1332,6 +1411,30 @@ class PF(object):
         """Return a list of RV names."""
         rv_names = [ rv[0] for rv in self._rvs ]
         return rv_names
+
+    def scale(self, scale):
+        """Derive a PF from another PF via a scale parameter.
+        
+        parameters
+        ----------
+        self : PF
+        scale : Param, value
+
+        returns
+        -------
+        new : PF
+            new PF with x -> x * scale
+        
+        """
+        try:
+            new = PF(func=[self])
+            if isinstance(scale, Param):
+                new.scale = scale
+            else:
+                new.scale = Param(value=scale)
+        except:
+            raise
+        return new
 
     def sf(self, *args, **kwargs):
         """Compute the survival function (1 - cdf) in x.
@@ -1359,9 +1462,13 @@ class PF(object):
         rv_values = self._get_rv_values(*args, **kwargs)
         # Get shape parameters, optional
         param_values = self._get_param_values(**kwargs)
-        # Compute cdf value in x
+        # Compute sf value in x
         #  - in case of a DERIVED PF, call an operator
-        if self.pftype == PF.DERIVED:
+        if (self.pftype == PF.DERIVED and isinstance(self.func, list) and
+            len(self.func) == 1 and isinstance(self.func[0], PF)):
+            value = self.norm.value * self.func[0].sf(*args, **kwargs)
+            return value
+        elif self.pftype == PF.DERIVED:
             if not isinstance(self.func, list) or len(self.func) != 3:
                 raise SyntaxError('DERIVED function is not recognized.')
             op = self.func[0]
@@ -1594,9 +1701,9 @@ class PF(object):
         for rv in self._rvs:
             a = rv[1]
             b = rv[2]
+            mean = self.mean()
             if a == -np.inf or b == np.inf:
                 nsigma = 10
-                mean = self.mean()
                 std  = self.std()
                 if a == -np.inf:
                     c = mean - nsigma * std
@@ -1609,7 +1716,8 @@ class PF(object):
             else:
                 c = a
                 d = b
-            bounds.append([a, b, c, d])
+            if rv[3] == RV.DISCRETE: mean = round(mean)
+            bounds.append([a, b, c, d, mean])
         return bounds
 
     def _get_param_values(self, **kwargs):
@@ -1623,9 +1731,10 @@ class PF(object):
         return param_values
 
     def _get_rv_values(self, *args, **kwargs):
-        rv_values = None
+        rv_values = []
         if len(args):
-            rv_values = args
+            for arg in args:
+                rv_values.append(arg)
         else:
             rv_values = []
             for rv_name in self.rv_names():
@@ -1635,6 +1744,11 @@ class PF(object):
                               len(self._rvs))
         if type(rv_values[0]) == float:
             self.logger.debug('rv values=%s', rv_values)
+        if self.loc != None and len(rv_values) == 1:
+            rv_values[0] = rv_values[0] - self.loc.value
+        if (self.scale != None and len(rv_values) == 1 and 
+            self.scale.value != 0.):
+            rv_values[0] = rv_values[0] / self.scale.value
         return rv_values
 
     def _leastsq_function(self, params, xdata, ydata, weight, dx):
@@ -1663,22 +1777,33 @@ class PF(object):
         """Convolve numerically two PFs and store the result in _cache."""
         mode = self.options.get('mode', 'fft')
         if mode == 'num' or mode == 'fft':
-            # Get rv bounds
+            # Define the rv bounds
             rv1_bounds = self.func[1]._get_bounds()
             rv2_bounds = self.func[2]._get_bounds()
             bounds = []
-            npts = self.options.get('npts', 1001)
+            npts = self.options.get('size', 1001)
             for rv1,rv2 in zip(rv1_bounds,rv2_bounds):
+                mean = None
                 if self.func[0] == 'rvadd':
                     a = rv1[0] + rv2[0]
                     b = rv1[1] + rv2[1]
                     c = rv1[2] + rv2[2]
                     d = rv1[3] + rv2[3]
+                    if a == -np.inf and b == np.inf:
+                        if self.loc == None: self.loc = Param(value=1.)
+                        self.loc.value = rv1[4] + rv2[4]
+                        c = c - self.loc.value
+                        d = d - self.loc.value
                 else:
                     a = rv1[0] - rv2[1]
                     b = rv1[1] - rv2[0]
                     c = rv1[2] - rv2[3]
                     d = rv1[3] - rv2[2]
+                    if self.loc == None: self.loc = Param(value=1.)
+                    self.loc.value = rv1[4] - rv2[4]
+                    wdt = (d - c) / 2
+                    c = -wdt
+                    d = wdt
                 bounds.append([a, b, c, d])
             # TODO, algo is problematic when > 1 rv
             for rv,bound in zip(self._rvs,bounds):
@@ -1699,7 +1824,8 @@ class PF(object):
                     dtype.append((rv[0],int))
             dtype.append(('pf',float))
             self._cache = np.recarray((npts,),dtype=dtype)
-            args = []
+            args1 = []
+            args2 = []
             bin_area = 1.
             step = None
             for rv,bound in zip(self._rvs,bounds):
@@ -1708,25 +1834,29 @@ class PF(object):
                 self._cache[rv[0]], step = np.linspace(bound[2], bound[3],
                                                        num=npts, retstep=True)
                 bin_area *= step
-                args.append(self._cache[rv[0]])
+                if self.loc != None:
+                    args1.append(self._cache[rv[0]] + rv1_bounds[0][4])
+                    args2.append(self._cache[rv[0]] + rv2_bounds[0][4])
+                else:
+                    args1.append(self._cache[rv[0]])
+                    args2.append(self._cache[rv[0]])
             # Evaluate pf values for both input pf
-            pf1 = self.func[1](*args)
-            pf2 = self.func[2](*args)
+            pf1 = self.func[1](*args1)
+            pf2 = self.func[2](*args2)
             if self.func[0] == 'rvsub': pf2 = pf2[::-1]
             # Perform the convolution
             if mode == 'num':
                 pf = scipy.signal.convolve(pf1, pf2, mode='full')
             else:
                 pf = scipy.signal.fftconvolve(pf1, pf2, mode='full')
-            if self.func[0] == 'rvsub': pf = pf[::-1]
             if self.func[0] == 'rvadd' and self._rvs[0][1] != -np.inf:
                 start = 0
-            elif self.func[0] == 'rvsub':
-                start = int(pf.shape[0]) - int(3 * (npts - 1) - 1) / 2
+            elif self.func[0] == 'rvsub' and 0 in self._cache[rv[0]]:
+                start = npts - 1 - np.where(self._cache[rv[0]] == 0)[0][0]
             else:
                 start = (npts - 2) / 2
-            print '\n\nnpts',start,npts,pf.shape,pf,'\n'
             self._cache.pf = pf[start:start+npts]
+            # Interpolation setup
             if not 'spline' in self.options:
                 if len(self._rvs) == 1:
                     self.options['spline'] = scipy.interpolate.interp1d
@@ -1734,6 +1864,8 @@ class PF(object):
                     self.options['spline'] = scipy.interpolate.interp2d
                 else:
                     self.options['spline'] = scipy.interpolate.griddata
+            print '\n',self._cache[self._rvs[0][0]],self._cache.pf,self.options
+            # Normalization factor
             integral = np.sum(self._cache.pf * bin_area)
             self.norm.value = 1. / integral
         elif len(self._rvs) == 1:
@@ -1743,6 +1875,14 @@ class PF(object):
             raise NotImplementedError('Sorry, rvadd operation not valid...')
         # Interpolate
         self._build_spline()
+        return
+
+    def _rvdiv(self, rv_values=None):
+        self._build_cache_rvs()
+        return
+
+    def _rvmul(self, rv_values=None):
+        self._build_cache_rvs()
         return
 
     def _rvsub(self, rv_values=None):
@@ -1784,7 +1924,7 @@ class RV(object):
             raise
 
     def __add__(self, other):
-        """Add two random variables.
+        """Add two random variables or a random variable by a parameter.
 
         The associated PF of the sum of the two random variables is
         a convolution of the two PFs.
@@ -1793,7 +1933,7 @@ class RV(object):
         Parameters
         ----------
         self : RV
-        other : RV
+        other : RV, Param, value
 
         Returns
         -------
@@ -1802,7 +1942,10 @@ class RV(object):
         
         """
         try:
-            new = RV(pf=self.rvadd(other))
+            if isinstance(other, RV):
+                new = RV(pf=self.pf.rvadd(other.pf))
+            else:
+                new = RV(pf=self.pf.loc(other))
         except:
             raise
         return new
@@ -1836,6 +1979,121 @@ class RV(object):
         except:
             raise
         return data
+
+    def __div__(self, other):
+        """Divide two random variables or a random variable by a parameter.
+
+        Caveat: this method assumes *independent* random variables.
+        
+        Parameters
+        ----------
+        self : RV
+        other : RV, Param, value
+
+        Returns
+        -------
+        new : RV
+             new RV which is the ratio of self and other
+        
+        """
+        try:
+            if isinstance(other, RV):
+                new = RV(pf=self.pf.rvdiv(other.pf))
+            else:
+                new = RV(pf=self.pf.scale((1./other)))
+        except:
+            raise
+        return new
+
+    def __mul__(self, other):
+        """Multiply two random variables or a random variable by a parameter.
+
+        Caveat: this method assumes *independent* random variables.
+        
+        Parameters
+        ----------
+        self : RV
+        other : RV, Param, value
+
+        Returns
+        -------
+        new : RV
+             new RV which is the product of self and other
+        
+        """
+        try:
+            if isinstance(other, RV):
+                new = RV(pf=self.pf.rvmul(other.pf))
+            else:
+                new = RV(pf=self.pf.scale(other))
+        except:
+            raise
+        return new
+
+    def __radd__(self, other):
+        """Add a random variable and a parameter.
+
+        Parameters
+        ----------
+        self : RV
+        other : Param, value
+
+        Returns
+        -------
+        new : RV
+             new RV which is the sum of self and other
+        
+        """
+        try:
+            new = RV(pf=self.pf.loc(other))
+        except:
+            raise
+        return new
+
+    def __rmul__(self, other):
+        """Multiply a parameter by a random variable.
+
+        Parameters
+        ----------
+        self : RV
+        other : Param, value
+
+        Returns
+        -------
+        new : RV
+             new RV which is the product of self and other
+        
+        """
+        try:
+            new = RV(pf=self.pf.scale(other))
+        except:
+            raise
+        return new
+
+    def __sub__(self, other):
+        """Subtract two random variables or a random variable by a parameter.
+
+        Caveat: this method assumes *independent* random variables.
+        
+        Parameters
+        ----------
+        self : RV
+        other : RV, Param, value
+
+        Returns
+        -------
+        new : RV
+             new RV which is the difference of self and other
+        
+        """
+        try:
+            if isinstance(other, RV):
+                new = RV(pf=self.pf.rvsub(other.pf))
+            else:
+                new = RV(pf=self.pf.loc((-1.)*other))
+        except:
+            raise
+        return new
 
     def _check_args_syntax(self, args, kwargs):
         if not len(args): return False
