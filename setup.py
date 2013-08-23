@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import sys
+
 DISTNAME = 'statspy'
 DESCRIPTION = 'Python module for statistics built on top of NumPy/SciPy'
 LONG_DESCRIPTION = open('README.rst').read()
@@ -40,9 +42,7 @@ def setup_package():
                                  'Programming Language :: Python :: 2.7',
                                  'Programming Language :: Python :: 3',
                                  'Programming Language :: Python :: 3.3',
-                                 ],
-                    cmdclass={'clean': CleanCommand},
-                    **extra_setuptools_args)
+                                 ])
     if (len(sys.argv) >= 2
         and ('--help' in sys.argv[1:] or sys.argv[1]
              in ('--help-commands', 'egg_info', '--version', 'clean'))):
