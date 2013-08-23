@@ -11,6 +11,7 @@ Links
 - Source code repository: https://github.com/bruneli/statspy
 - User's Guide: https://github.com/bruneli/statspy/blob/master/doc/MANUAL.md
 - Reference Guide: <tobedone>
+- Download releases: https://sourceforge.net/projects/statspy/files
 
 Install
 =======
