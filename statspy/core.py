@@ -572,9 +572,9 @@ class PF(object):
            Normalization parameter set to 1 by default. It can be different
            from 1 when the PF is fitted to data.
        loc : Param (only for 1D PF)
-           Location parameter: x -> x + loc (None by default)
+           Location parameter, x -> x + loc (None by default)
        scale : Param (only for 1D PF)
-           Scale Parameter: x -> x * scale (None by default)
+           Scale Parameter, x -> x * scale (None by default)
        isuptodate : bool
            Tells whether PF needs to be normalized or not
        options : dict
@@ -1902,8 +1902,8 @@ class RV(object):
        logger : logging.Logger
            message logging system
 
-       Examples:
-       ---------
+       Examples
+       --------
        >>> import statspy as sp 
        >>> X = sp.RV("norm(x|mu=10,sigma=2)")
     """
