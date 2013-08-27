@@ -610,7 +610,8 @@ class PF(object):
         self._free_params = []
         self._pcov = None
         self._rvs = []
-        self._spline = None
+        self._spline_pf = None
+        self._spline_cdf = None
         try:
             self.logger.debug('args = %s, kwargs = %s',args,kwargs)
             foundArgs = self._check_args_syntax(args)
@@ -727,13 +728,13 @@ class PF(object):
                 raise SyntaxError('DERIVED function is not recognized.')
             op = self.func[0] # operator
             if type(op) == str:
-                redocache = not self.isuptodate or self._spline == None
+                redocache = not self.isuptodate or self._spline_pf == None
                 for name,value in zip(self.rv_names(), rv_values):
                     if (np.amin(value) < np.amin(self._cache[name]) or
                         np.amax(value) > np.amax(self._cache[name])):
                         redocache = True
                 if redocache: self._build_cache(*rv_values)
-                value = self._spline(*rv_values)
+                value = self._spline_pf(*rv_values)
             else:
                 vals = [0.,0.]
                 for idx in [1,2]:
@@ -829,14 +830,23 @@ class PF(object):
             if not isinstance(self.func, list) or len(self.func) != 3:
                 raise SyntaxError('DERIVED function is not recognized.')
             op = self.func[0]
-            vals = [0.,0.]
-            for idx in [1,2]:
-                the_args = []
-                for irv,rv in enumerate(self._rvs):
-                    if rv[0] in self.func[idx].rv_names():
-                        the_args.append(rv_values[irv])
-                vals[idx-1] = self.func[idx].cdf(*the_args, **kwargs)
-            value = self.norm.value * op(vals[0],vals[1])
+            if type(op) == str:
+                redocache = not self.isuptodate or self._spline_cdf == None
+                for name,value in zip(self.rv_names(), rv_values):
+                    if (np.amin(value) < np.amin(self._cache[name]) or
+                        np.amax(value) > np.amax(self._cache[name])):
+                        redocache = True
+                if redocache: self._build_cache(*rv_values)
+                value = self.norm.value * self._spline_cdf(*rv_values)
+            else:
+                vals = [0.,0.]
+                for idx in [1,2]:
+                    the_args = []
+                    for irv,rv in enumerate(self._rvs):
+                        if rv[0] in self.func[idx].rv_names():
+                            the_args.append(rv_values[irv])
+                    vals[idx-1] = self.func[idx].cdf(*the_args, **kwargs)
+                value = self.norm.value * op(vals[0],vals[1])
             return value
         #  - in case of a RAW PF, call directly the scipy function
         return self.norm.value * self.func.cdf(rv_values[0], *param_values)
@@ -1472,14 +1482,23 @@ class PF(object):
             if not isinstance(self.func, list) or len(self.func) != 3:
                 raise SyntaxError('DERIVED function is not recognized.')
             op = self.func[0]
-            vals = [0.,0.]
-            for idx in [1,2]:
-                the_args = []
-                for irv,rv in enumerate(self._rvs):
-                    if rv[0] in self.func[idx].rv_names():
-                        the_args.append(rv_values[irv])
-                vals[idx-1] = self.func[idx].sf(*the_args, **kwargs)
-            value = self.norm.value * op(vals[0],vals[1])
+            if type(op) == str:
+                redocache = not self.isuptodate or self._spline_cdf == None
+                for name,value in zip(self.rv_names(), rv_values):
+                    if (np.amin(value) < np.amin(self._cache[name]) or
+                        np.amax(value) > np.amax(self._cache[name])):
+                        redocache = True
+                if redocache: self._build_cache(*rv_values)
+                value = 1 - self.norm.value * self._spline_cdf(*rv_values)
+            else:
+                vals = [0.,0.]
+                for idx in [1,2]:
+                    the_args = []
+                    for irv,rv in enumerate(self._rvs):
+                        if rv[0] in self.func[idx].rv_names():
+                            the_args.append(rv_values[irv])
+                    vals[idx-1] = self.func[idx].sf(*the_args, **kwargs)
+                value = self.norm.value * op(vals[0],vals[1])
             return value
         #  - in case of a RAW PF, call directly the scipy function
         return self.norm.value * self.func.sf(rv_values[0], *param_values)
@@ -1529,15 +1548,17 @@ class PF(object):
         else:
             pf, bins = np.histogram(data, bins=100)
         rv_name = self._rvs[0][0]
-        dtype = [(rv_name,float),('pf',float)]
+        dtype = [(rv_name,float),('pf',float),('cdf',float)]
         self._cache = np.recarray(pf.shape, dtype=dtype)
         self._cache[rv_name] = 0.5*(bins[1:] + bins[:-1]) # Bin centers
         self._cache.pf = pf                               # Bin contents
         if self._rvs[0][3] == RV.CONTINUOUS:
             dx = bins[1:] - bins[:-1]                     # Bin widths
             integral = (self._cache.pf * dx).sum()
+            self._cache.cdf = np.cumsum(self._cache.pf * dx)
         else:
             integral = (self._cache.pf).sum()
+            self._cache.cdf = np.cumsum(self._cache.pf)
         self.norm.value = 1. / integral
 
     def _build_spline(self):
@@ -1548,14 +1569,17 @@ class PF(object):
             name = self._rvs[0][0]
             method = self.options.get('spline',
                                       scipy.interpolate.UnivariateSpline)
-            self._spline = method(self._cache[name], self._cache.pf)
+            self._spline_pf = method(self._cache[name], self._cache.pf)
+            self._spline_cdf = method(self._cache[name], self._cache.cdf)
         elif len(self._rvs) == 2:
             method = self.options.get('spline',
                                       scipy.interpolate.RectBivariateSpline)
             name1 = self._rvs[0][0]
             name2 = self._rvs[1][0]
-            self._spline = method(self._cache[name1], self._cache[name2],
-                                  self._cache.pf)
+            self._spline_pf = method(self._cache[name1], self._cache[name2],
+                                     self._cache.pf)
+            self._spline_cdf = method(self._cache[name1], self._cache[name2],
+                                      self._cache.cdf)
         return
 
     def _check_args_syntax(self, args):
@@ -1622,7 +1646,14 @@ class PF(object):
                     for par in ele.params:
                         if not par in self.params: self.params.append(par)
                     for rv in ele._rvs:
-                        if not rv[0] in self.rv_names():
+                        if (type(self.func[0]) == str and
+                            self.func[0].startswith('rv')):
+                            # For operations on RVs, the number of RVs is 
+                            # equal to the number of RVs for func[1] or 
+                            # func[2]
+                            if len(self._rvs) < len(self.func[1]._rvs):
+                                self._rvs.append(rv)
+                        elif not rv[0] in self.rv_names():
                             self._rvs.append(rv)
                 if len(self.func) > 1 and type(self.func[0]) == str:
                     # Tricky operators like convolution requiring a cache
@@ -1823,6 +1854,7 @@ class PF(object):
                 else:
                     dtype.append((rv[0],int))
             dtype.append(('pf',float))
+            dtype.append(('cdf',float))
             self._cache = np.recarray((npts,),dtype=dtype)
             args1 = []
             args2 = []
@@ -1840,6 +1872,7 @@ class PF(object):
                 else:
                     args1.append(self._cache[rv[0]])
                     args2.append(self._cache[rv[0]])
+                self.logger.debug('%s bounds set to %s' % (rv[0],bound))
             # Evaluate pf values for both input pf
             pf1 = self.func[1](*args1)
             pf2 = self.func[2](*args2)
@@ -1856,6 +1889,11 @@ class PF(object):
             else:
                 start = (npts - 2) / 2
             self._cache.pf = pf[start:start+npts]
+            # Cumulative distribution function
+            self._cache.cdf = np.cumsum(self._cache.pf * bin_area)
+            # Normalization factor
+            integral = np.sum(self._cache.pf * bin_area)
+            self.norm.value = 1. / integral
             # Interpolation setup
             if not 'spline' in self.options:
                 if len(self._rvs) == 1:
@@ -1864,9 +1902,6 @@ class PF(object):
                     self.options['spline'] = scipy.interpolate.interp2d
                 else:
                     self.options['spline'] = scipy.interpolate.griddata
-            # Normalization factor
-            integral = np.sum(self._cache.pf * bin_area)
-            self.norm.value = 1. / integral
         elif len(self._rvs) == 1:
             # Generate random variated and build an histogram
             self._build_cache_rvs()
@@ -1878,10 +1913,14 @@ class PF(object):
 
     def _rvdiv(self, rv_values=None):
         self._build_cache_rvs()
+        # Interpolate
+        self._build_spline()
         return
 
     def _rvmul(self, rv_values=None):
         self._build_cache_rvs()
+        # Interpolate
+        self._build_spline()
         return
 
     def _rvsub(self, rv_values=None):
