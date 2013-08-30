@@ -1,13 +1,11 @@
 #!/usr/bin/env python
-
 """on_off_problem.py
 
 This example compares Z values from various hypothesis tests performed
 when incorporating a systematic uncertainty into a test of the
 background-only hypothesis for a Poisson process.
 The on/off problem, the different statistical tests and the input/output values
-are described in:
-    http://arxiv.org/abs/physics/0702156
+are described in http://arxiv.org/abs/physics/0702156
 
 """
 

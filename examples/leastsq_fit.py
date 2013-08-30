@@ -1,8 +1,8 @@
 #!/usr/bin/env python
+"""leastsq_fit.py
 
-"""curve_fitting.py
-
-This example shows how to fit a PDF to data.
+This example shows how to fit a PDF to data via the method of 
+least-squares.
 
 """
 

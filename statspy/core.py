@@ -36,10 +36,11 @@ class Param(object):
     """Base class to define a PF shape parameter. 
 
        Two types of parameters can be built:
-       - RAW parameters do not depend on any other parameter and have
-       a value directly associated to them
-       - DERIVED parameters are obtained from other parameters via an 
-       analytical formula.
+
+       * RAW parameters do not depend on any other parameter and have
+         a value directly associated to them
+       * DERIVED parameters are obtained from other parameters via an 
+         analytical formula.
 
        Attributes
        ----------
@@ -57,11 +58,11 @@ class Param(object):
            List of operators and parameters used to parse an analytic function
        strform : str (optional, only for DERIVED parameters)
            Representation of the formula as a string
-       partype : int
+       partype : Param.RAW or Param.DERIVED
            Tells whether it is a RAW or a DERIVED parameter
        const : bool
            Tells whether a parameter is fixed during a minimazation process.
-           It is not a constant in the sense of C++.
+           It is not a constant in the sense of programming.
        poi :  bool
            Tells whether a parameter is a parameter of interest in an
            hypothesis test.
@@ -81,7 +82,7 @@ class Param(object):
 
     def __init__(self, *args, **kwargs):
         self.name    = kwargs.get('name', None)
-        self.label   = kwargs.get('name', self.name)
+        self.label   = kwargs.get('label', self.name)
         self.value   = kwargs.get('value', 0.)
         self.unc     = kwargs.get('unc', 0.)
         self.bounds  = kwargs.get('bounds', [])
@@ -556,25 +557,27 @@ class PF(object):
        Probability Function is a generic name which includes both the
        probability mass function for discrete random variables and the
        probability density fucntion for continuous random variables.
+       The function itself is defined in ``self.func``:
+
+       * For a RAW PF, it is a pdf or a pmf of scipy.stats. 
+       * For a DERIVED PF, it is list containing an operator and 
+         pointers to other PFs.
 
        Attributes
        ----------
        name : str (optional)
            Function name
        func : scipy.stats.distributions.rv_generic, list
-           Probability Density Function object associated to a Random 
-           Variable. For a RAW PF, it is a pdf or pmf of scipy.stats. For a
-           DERIVED PF, it is list containing an operator and pointers to
-           other PFs.
+           Probability Density Function object.
        params : statspy.core.Param list
            List of shape parameters used to define the pf
        norm : Param
            Normalization parameter set to 1 by default. It can be different
            from 1 when the PF is fitted to data.
-       loc : Param (only for 1D PF)
-           Location parameter, x -> x + loc (None by default)
-       scale : Param (only for 1D PF)
-           Scale Parameter, x -> x * scale (None by default)
+       lolc : Param, optional
+           Location parameter
+       scalle : Param, optional
+           Scale parameter
        isuptodate : bool
            Tells whether PF needs to be normalized or not
        options : dict
@@ -587,7 +590,7 @@ class PF(object):
        Examples
        --------
        >>> import statspy as sp
-       >>> pmf_n = sp.PF("poisson(n;mu)",mu=10.)
+       >>> pmf_n = sp.PF("pmf_n=poisson(n;mu)",mu=10.)
     """
 
     # Define the different probability function types
@@ -863,16 +866,22 @@ class PF(object):
         other : PF
         kw : keywork arguments, dict
             May be:
-            - options : str
+
+            * options : str
                 Way to perform the convolution. If mode is equal to:
-                - 'fft' then scipy.signal.fftconvolve is used
-                - 'num' then scipy.signal.convolve is used
-                - 'rvs' then random variates are used to generate the PF
+
+                * ``fft`` then ``scipy.signal.fftconvolve`` is used
+                * ``num`` then ``scipy.signal.convolve`` is used
+                * ``rvs`` then random variates are used to generate the PF
 
         returns
         -------
         new : PF
             new PF which is the convolution of self and other
+
+        Notes
+        -----
+        This method is working only for 1-dim pdf/pmf currently.
 
         """
         try:
@@ -888,15 +897,17 @@ class PF(object):
 
         This method can be used to show an error band on your fitted PF.
         To compute the uncertainty on the PF, the error propagation formula is
-        used,
+        used::
+
             dF(x;th) = (F(x;th+dth) - F(x;th-dth))/2
             dF(x)^2 = dF(x;th)^T * corr(th,th') * dF(x;th')
+
         so keep in mind it is only an approximation.
 
         parameters
         ----------
         x : float, ndarray
-            Random variate(s)
+            Random variable(s) value(s)
 
         returns
         -------
@@ -1211,10 +1222,11 @@ class PF(object):
         """Estimate the mean of the PF.
 
         Warning:
-        - In the case of a RAW PF from scipy.stats, it calls the stats 
-        method and therefore returns the expected value.
-        - In the case of a DERIVED PF, it returns an estimate derived from 
-        random variates.
+
+        * In the case of a RAW PF from ``scipy.stats``, it calls the ``stats`` 
+          method and therefore returns the expected value.
+        * In the case of a DERIVED PF, it returns an estimate derived from 
+          random variates and using the ``numpy.mean`` function.
 
         Parameters
         ----------
@@ -1230,9 +1242,11 @@ class PF(object):
         return mean
 
     def nllf(self, data, **kw):
-        """Evaluate the negative log-likelihood function
+        """Evaluate the negative log-likelihood function::
 
-        nllf = -sum(log(pf(x;params))
+            nllf = -sum_i(log(pf(x_i;params))
+
+        ``sum`` runs over the x-variates defined in data array.
 
         Parameters
         ----------
@@ -1261,16 +1275,22 @@ class PF(object):
     def pllr(self, data, **kw):
         """Evaluate the profile log-likelihood ratio ( * -2 )
 
-        The profile likelihood ratio is defined by:
-        l = L(x|theta_r,\hat{\hat{theta_s}})/L(x|\hat{theta_r},\hat{theta_s})
-        The profile log-likehood ratio is then:
-        q = -2 * log(l)
+        The profile likelihood ratio is defined by::
+
+            l = L(x|theta_r,\hat{\hat{theta_s}}) / L(x|\hat{theta_r},\hat{theta_s})
+
+        The profile log-likehood ratio is then::
+
+            q = -2 * log(l)
+
         Where
-        - L is the Likelihood function (self)
-        - theta_r is the list of parameters of interest
-        - theta_s is the list of nuisance parameters
-        - hat or double hat refers to the unconditional or conditional
-          maximum likelood estimates of the parameters.
+
+        * L is the Likelihood function (computed via data)
+        * theta_r is the list of parameters of interest (Param.poi = True)
+        * theta_s is the list of nuisance parameters
+        * hat or double hat refers to the unconditional and conditional
+          maximum likelood estimates of the parameters respectively.
+
         pllr is used as a test statistics for problems with numerous 
         nuisance parameters. Asymptotically, the pllr PF is described by a
         chi2 distribution (Wilks theorem).
@@ -2170,8 +2190,29 @@ def check_method_exists(obj=None, name=""):
     return True
 
 def get_obj(obj_name):
-    """Look in the different dictionaries if an object named obj_name exists
-    and returns it."""
+    """Returns a Param, PF or RV object.
+
+    Look in the different dictionaries if an object named obj_name exists
+    and returns it.
+
+    Parameters
+    ----------
+    obj_name : str
+        Object name used to define a Param, PF or RV
+
+    Returns
+    -------
+    new : Param, PF, RV
+         Object if found in the dictionaries
+
+    Examples
+    --------
+    >>> import statspy as sp
+    >>> mypmf = sp.PF('mypmf=poisson(n;lbda=5)')
+    >>> lbda = sp.get_obj('lbda')
+    >>> lbda.label = '\\lambda'
+
+    """
     obj = None
     for obj_dict in (_drvs, _dpfs, _dparams):
         if not obj_name in obj_dict: continue

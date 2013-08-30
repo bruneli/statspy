@@ -1,16 +1,16 @@
 .. -*- mode: rst -*-
 
+=======
 StatsPy
 =======
 
-StatsPy is a Python module for statistics built on top of NumPy/SciPy. It contains a list of classes and tools intended to ease the design of complex distributions which can be later used to perform statistical tests or extract confidence intervals.
+StatsPy is a Python module for statistics built on top of `NumPy/SciPy <http://docs.scipy.org/doc/>`_. It contains a list of classes and tools intended to ease the design of complex distributions which can be later used to perform statistical tests or extract confidence intervals.
 
 Links
 =====
 
 - Source code repository: https://github.com/bruneli/statspy
-- User's Guide: https://github.com/bruneli/statspy/blob/master/doc/MANUAL.md
-- Reference Guide: http://bruneli.github.io/statspy/
+- User's and Reference Guides: http://bruneli.github.io/statspy/
 - Download releases: https://sourceforge.net/projects/statspy/files
 
 Install

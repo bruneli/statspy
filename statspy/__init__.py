@@ -12,7 +12,7 @@ Getting started::
   >>> help(sp)
 
 """
-__version__ = "0.1.0a0"
+__version__ = "0.1.0a1"
 
 import sys
 if sys.version_info[0] == 2 and sys.version_info[1] < 6:
