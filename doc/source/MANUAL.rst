@@ -141,10 +141,10 @@ is a subsidiary measurement sensitive to ``b`` only. In practice, one will
 model this problem with StatsPy via::
 
     >>> import statspy as sp
-    >>> mu = sp.Param(name='mu', value=0, poi=True) # Signal strength
-    >>> s = sp.Param(name='s', value=3, const=True) # Expected number of signal evts
-    >>> b = sp.Param(name='b', value=1) # Expected number of bkg evts in signal region
-    >>> tau = sp.Param(name='tau', value=5, const=True)
+    >>> mu = sp.Param("mu = 0.", poi=True) # Signal strength
+    >>> s = sp.Param("s = 3.", const=True) # Expected number of signal evts
+    >>> b = sp.Param("b = 1.") # Expected number of bkg evts in signal region
+    >>> tau = sp.Param("tau = 5.", const=True)
     >>> mu_on  = mu * s + b # Total events expectation in the signal region
     >>> mu_off = tau*b      # Total events expectation in the control region
 
@@ -155,6 +155,7 @@ Then the pmf and the likelihood can be defined like::
     >>> likelihood = pmf_on * pmf_off
 
 In particular from the example above
+
 * ``mu_on`` and ``mu_off`` are what is called DERIVED parameters meaning they
   are constructed from other parameters. When the value of ``mu`` or ``b`` 
   is changed, it gets automatically propagated to ``mu_on`` and ``mu_off`` and
@@ -168,8 +169,57 @@ In particular from the example above
 Perform a fit to data
 ^^^^^^^^^^^^^^^^^^^^^
 
+To perform a fit to data, two methods are provided in the ``PF`` class: 
+the least square method ``leastsq_fit`` and the maximum likelihood
+method ``maxlikelihood_fit``.
+
+**Example 2 (Con't)**: considering again the example of a normally distributed
+signal on top of an exponentially falling background, a least-square fit would
+be done like:
+
+.. literalinclude:: ../../examples/leastsq_fit.py
+   :lines: 33-34,41,44,50-51
+
+.. figure:: images/leastsq_fit.png
+
+   (:download:`Source code <../../examples/leastsq_fit.py>`, :download:`png <images/leastsq_fit.png>`)
+
 Working with Random Variables
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+It is sometimes easier to think a problem in term of random variable than
+in term of probability functions. We also might want to know the probability
+function of a random variable given its formula as a function of other
+random variables. The class ``statspy.core.RV`` is designed to solve some
+of these problems (rescaling, additions, multplicitations) numerically.
+
+Random variables are declared with a similar syntax to ``PF``::
+
+    >>> import statspy as sp
+    >>> X = sp.RV("norm(x|mu=10,sigma=2)")
+
+To access the ``PF`` associated to a Random Variable and its methods, the 
+``self.pf`` class member should be used::
+
+    >>> X.pf(12)
+    0.12098536225957168
+    >>> X.pf.cdf(12)
+    0.84134474606854293
+
+and radom variates can be generated directly via the ``__call__`` special
+method::
+
+    >>> X(size=10)
+
+But the main usage of this class it to determine the PF of derived random
+variables as illustrated by the code snippets and figure below.
+
+.. literalinclude:: ../../examples/rv_operations.py
+   :lines: 15-16,22,34,74-76
+
+.. figure:: images/rv_operations.png
+
+   (:download:`Source code <../../examples/rv_operations.py>`, :download:`png <images/rv_operations.png>`)
 
 Statistical inference with StatsPy
 ----------------------------------
@@ -177,14 +227,23 @@ Statistical inference with StatsPy
 Parameters estimation
 ^^^^^^^^^^^^^^^^^^^^^
 
-The free parameters (i.e. parameters for which ``Param.const == False``) of a probability function can be fitted to data via two widely used methods.
+The free parameters (i.e. parameters for which ``Param.const == False``) of a
+probability function can be fitted to data via two widely used methods.
 
-* The method of least squares which requires as minimial inputs the x- and y- values of a set of data as shown by the following example::
+* The method of least squares which requires as minimial inputs the x- and y-
+  values of a set of data has already been illustrated in the
+  `Perform a fit to data`_ section. After running a least square fit, the
+  free parameters of the fit have their ``value`` updated but also their
+  uncertainty ``unc``. Uncertainties and correlations between free parameters
+  are computed using some approximation of the Hessian matrix.
+* The maximum likelihood estimation only requires as input random variates::
 
-        >>> import statsy as sp
-        >>> xdata = 
-
-* The maximum likelihood estimation
+    >>> import statspy as sp
+    >>> pdf_true = sp.PF("pdf_true=norm(x|mu_true=20.,sigma_true=5.)")
+    >>> data = pdf_true.rvs(size=20)
+    >>> pdf_fit = sp.PF("pdf_fit=norm(x|mu_fit=1.,sigma_fit=1.)")
+    >>> pdf_fit.maxlikelihood_fit(data)
+    ([mu_fit = 19.5111374418, sigma_fit = 5.12291410326], 41.053294585533187)
 
 Making hypothesis tests
 ^^^^^^^^^^^^^^^^^^^^^^^

@@ -71,3 +71,4 @@ ax.text(0.05, 0.05, fittxt, transform=ax.transAxes, fontsize=14,
         verticalalignment='bottom', bbox={"boxstyle":"square","fc":"w"})
 
 plt.show()
+fig.savefig('leastsq_fit.png', dpi=fig.dpi)

@@ -73,14 +73,43 @@ class Param(object):
 
        Examples
        --------
-       >>> import statspy as sp 
-       >>> mu = sp.Param(name="mu",value=10.)
+
+       Declarations::
+
+           >>> import statspy as sp 
+           >>> mu = sp.Param(name="mu",value=10.,label="\\\\mu")
+           >>> x = sp.Param("x = 10. +- 2.")
+           >>> x.value
+           10.0
+           >>> x.unc
+           2.0
+           >>> y = sp.Param("y = 5.", unc=1.)
+
+       Operations, building DERIVED parameters::
+
+           >>> x + y
+           x + y = 15.0 +- 2.2360679775
+           >>> z = x * y
+           >>> z.name = 'z'
+           >>> z
+           z = x * y = 50.0 +- 14.1421356237
+           >>> x**2
+           x ** 2 = 100.0 +- 40.0
+
+       Possible operations are ``+,-,*,/,**``.
+
     """
 
     # Define the different parameter types
     (RAW,DERIVED) = (0,10)
 
+    # Define derivatives for main operators
+    _derivative_add_sub = [lambda x,y : 1, lambda x,y : 1]
+    _derivative_mul = [lambda x,y : y, lambda x,y : x]
+    _derivative_div = [lambda x,y : 1/y, lambda x,y : x/y/y]
+
     def __init__(self, *args, **kwargs):
+        # Public class members
         self.name    = kwargs.get('name', None)
         self.label   = kwargs.get('label', self.name)
         self.value   = kwargs.get('value', 0.)
@@ -93,7 +122,12 @@ class Param(object):
         self.partype = Param.RAW
         self.isuptodate = True
         self.logger  = logging.getLogger('statspy.core.Param')
+        # Internal class members
+        self._derivative = kwargs.get('derivative', None)
+        self._pcov = None
         try:
+            self.logger.debug('args = %s, kwargs = %s',args,kwargs)
+            foundArgs = self._check_args_syntax(args)
             if self.formula != None:
                 self.partype = Param.DERIVED
                 #Param._check_formula(self.formula) # <= TODO
@@ -165,6 +199,8 @@ class Param(object):
             if (name == "value" and self.partype == Param.DERIVED and
                 (self.name == None or self.isuptodate == False)):
                 self._evaluate()
+            if (name == "unc" and self.partype == Param.DERIVED):
+                self._evaluate_unc()
         except:
             raise
         return object.__getattribute__(self, name)
@@ -179,7 +215,7 @@ class Param(object):
 
         Returns
         -------
-        sef : Param
+        self : Param
              self parameter modified by other
         
         """
@@ -204,7 +240,7 @@ class Param(object):
 
         Returns
         -------
-        sef : Param
+        self : Param
              self parameter modified by other
         
         """
@@ -229,7 +265,7 @@ class Param(object):
 
         Returns
         -------
-        sef : Param
+        self : Param
              self parameter modified by other
         
         """
@@ -309,6 +345,7 @@ class Param(object):
         theStr = self.name + " = " if self.name != None else ""
         if self.strform != None: theStr = theStr + self.strform + " = "
         theStr = theStr + str(self.value)
+        if self.unc != 0: theStr = theStr + " +- " + str(self.unc)
         return theStr
 
     def __rmul__(self, other):
@@ -366,7 +403,8 @@ class Param(object):
         
         """
         try:
-            new = Param(formula=[[operator.sub, self, other]])
+            new = Param(formula=[[operator.sub, self, other]],
+                        strform=Param._build_str_formula(self,'-',other))
         except:
             raise
         return new
@@ -459,6 +497,22 @@ class Param(object):
             self.unc   = val / math.sqrt(val * val + 1) * unc
         return self.value, self.unc
 
+    def _check_args_syntax(self, args):
+        if not len(args): return False
+        if not isinstance(args[0],str):
+            raise SyntaxError("If an argument is passed to Param without a keyword, it must be a string.")
+        # Analyse the string
+        theStr = args[0]
+        if '=' in theStr:
+            self.label = self.name = theStr.split('=')[0].strip().lstrip()
+            self.logger.debug("Found Param name %s", self.name)
+            theStr = theStr.split('=')[1]
+        if '+-' in theStr:
+            self.unc = float(theStr.split('+-')[1].strip().lstrip())
+            theStr = theStr.split('+-')[0]
+        self.value = float(theStr.strip().lstrip())
+        return True
+
     def _evaluate(self):
         if self.partype != Param.DERIVED: return
         if type(self.formula) != list: return
@@ -482,10 +536,75 @@ class Param(object):
                 else:
                     raise TypeError('operation is not recognized')
             elif isinstance(op, Param):
-                self.value = op.value
+                value = op.value
             else:
                 raise TypeError('operation type is not recognized')
             self.value = value
+        self.isuptodate = True
+        return
+
+    def _evaluate_unc(self):
+        """Propagation of uncertainty."""
+        if self.partype != Param.DERIVED: return
+        if type(self.formula) != list: return
+        value = 0.
+        unc = 0.
+        for op in self.formula:
+            if isinstance(op, list):
+                if len(op) == 3:
+                    # operators +,-,*,/,**
+                    if op[0] == operator.mul:
+                        derivative = [lambda x,y : y, lambda x,y : x]
+                    elif op[0] == operator.div:
+                        derivative = [lambda x,y : 1/y, lambda x,y : x/y/y]
+                    elif op[0] == operator.pow:
+                        derivative = [lambda x,y : y*(x**(y-1)), 
+                                      lambda x,y : math.log(x)*math.exp(y) ]
+                    else:
+                        derivative = [lambda x,y : 1, lambda x,y : 1]
+                    corr = 0.
+                    if isinstance(op[1], Param):
+                        val1 = value if op[1] == self else op[1].value
+                        unc1 = unc if op[1] == self else op[1].unc
+                        if type(op[1]._pcov) == list and isinstance(op[2], Param):
+                            for par in op[1]._pcov:
+                                if par[0] == op[2]: corr = par[1] 
+                    else:
+                        val1 = op[1]
+                        unc1 = 0.
+                    val2 = op[2].value if isinstance(op[2], Param) else op[2]
+                    unc2 = op[2].unc if isinstance(op[2], Param) else 0.
+                    df1 = (derivative[0])(val1, val2)
+                    df2 = (derivative[1])(val1, val2)
+                    value = op[0](val1, val2)
+                    unc = df1 * df1 * unc1 * unc1 + df2 * df2 * unc2 * unc2
+                    if corr != 0.: unc += df1 * df2 * corr * unc1 * unc2
+                    if unc < 0.: raise SyntaxError('Negative uncertainty.')
+                    unc = math.sqrt(unc)
+                elif len(op) == 2 and isinstance(op[1], Param):
+                    # mathematical function
+                    if op[1] == self:
+                        value = op[0](value)
+                    else:
+                        value = op[0](op[1].value)
+                        if self._derivative != None:
+                            df = self._derivative(op[1].value)
+                            unc = df * df * op[1].unc * op[1].unc
+                            if unc < 0.: raise SyntaxError('Negative uncertainty.')
+                            unc = math.sqrt(unc)
+                elif len(op) == 1 and isinstance(op[0], Param):
+                    # simple copy
+                    value = op[0].value
+                    unc = op[0].unc
+                else:
+                    raise TypeError('operation is not recognized')
+            elif isinstance(op, Param):
+                value = op.value
+                unc = op.unc
+            else:
+                raise TypeError('operation type is not recognized')
+            self.value = value
+            self.unc = unc
         self.isuptodate = True
         return
 
@@ -545,10 +664,12 @@ class Param(object):
         par1_strform = Param._get_strform(par1)
         par2_strform = Param._get_strform(par2)
         if par1_strform != None and par2_strform != None:
-            if op == '+' or op == '-':
-                strform = '%s %s %s' % (par1_strform, op, par2_strform)
-            else:
-                strform = '(%s) %s (%s)' % (par1_strform, op, par2_strform)
+            if op != '+' and op != '-':
+                if isinstance(par1, Param) and par1.name == None:
+                    par1_strform = '(' + par1_strform + ')'
+                if isinstance(par2, Param) and par2.name == None:
+                    par2_strform = '(' + par2_strform + ')'
+            strform = '%s %s %s' % (par1_strform, op, par2_strform)
         return strform
 
 class PF(object):
@@ -574,10 +695,6 @@ class PF(object):
        norm : Param
            Normalization parameter set to 1 by default. It can be different
            from 1 when the PF is fitted to data.
-       lolc : Param, optional
-           Location parameter
-       scalle : Param, optional
-           Scale parameter
        isuptodate : bool
            Tells whether PF needs to be normalized or not
        options : dict
@@ -602,13 +719,13 @@ class PF(object):
         self.func = None
         self.params = []
         self.norm = Param(value=1., const=True)
-        self.loc = None
-        self.scale = None
         self.isuptodate = False
         self.options = kwargs.get('options', {})
         self.pftype = PF.RAW
         self.logger = logging.getLogger('statspy.core.PF')
         # Internal class members
+        self._loc = None
+        self._scale = None
         self._cache = None
         self._free_params = []
         self._pcov = None
@@ -725,7 +842,7 @@ class PF(object):
         #  - in case of a DERIVED PF, call an operator
         if (self.pftype == PF.DERIVED and isinstance(self.func, list) and
             len(self.func) == 1 and isinstance(self.func[0], PF)):
-            value = self.func[0](*args, **kwargs)
+            value = self.func[0](*rv_values, **kwargs)
         elif self.pftype == PF.DERIVED:
             if not isinstance(self.func, list) or len(self.func) != 3:
                 raise SyntaxError('DERIVED function is not recognized.')
@@ -753,8 +870,8 @@ class PF(object):
                 value = self.func.pmf(rv_values[0], *param_values)
             else:
                 value = self.func.pdf(rv_values[0], *param_values)
-        if self.scale != None and self.scale.value != 0.:
-            value = value / self.scale.value
+        if self._scale != None and self._scale.value != 0.:
+            value = value / self._scale.value
         return self.norm.value * value
 
     def __mul__(self, other):
@@ -827,7 +944,7 @@ class PF(object):
         #  - in case of a DERIVED PF, call an operator
         if (self.pftype == PF.DERIVED and isinstance(self.func, list) and
             len(self.func) == 1 and isinstance(self.func[0], PF)):
-            value = self.norm.value * self.func[0].cdf(*args, **kwargs)
+            value = self.norm.value * self.func[0].cdf(*rv_values, **kwargs)
             return value
         elif self.pftype == PF.DERIVED:
             if not isinstance(self.func, list) or len(self.func) != 3:
@@ -981,8 +1098,8 @@ class PF(object):
                         self._free_params.append(raw_par)
         # Get the list of shape parameters
         params = copy.copy(self.params)
-        if self.loc != None: params.append(self.loc)
-        if self.scale != None: params.append(self.scale)
+        if self._loc != None: params.append(self._loc)
+        if self._scale != None: params.append(self._scale)
         for par in params:
             if par.partype == Param.RAW and not par.const:
                 self._free_params.append(par)
@@ -1073,10 +1190,13 @@ class PF(object):
                 if (self._pcov)[ipar][ipar] >= 0.:
                     unc = math.sqrt((self._pcov)[ipar][ipar])
                 val2, unc2 = par.unbound_to_bound(popt[ipar], unc)
-                for jpar in range(len(self._free_params)):
+                par._pcov = []
+                for jpar, par2 in enumerate(self._free_params):
                     if unc == 0.: continue
                     self._pcov[ipar][jpar] *= (unc2 / unc)
                     self._pcov[jpar][ipar] *= (unc2 / unc)
+                    if jpar != ipar:
+                        par._pcov.append([par2, self._pcov[jpar][ipar]])
         else:
             self._pcov = np.inf
             pvalue = np.inf
@@ -1099,9 +1219,9 @@ class PF(object):
         try:
             new = PF(func=[self])
             if isinstance(loc, Param):
-                new.loc = loc
+                new._loc = loc
             else:
-                new.loc = Param(value=loc)
+                new._loc = Param(value=loc)
         except:
             raise
         return new
@@ -1140,9 +1260,9 @@ class PF(object):
         #  - in case of a DERIVED PF, call an operator
         if (self.pftype == PF.DERIVED and isinstance(self.func, list) and
             len(self.func) == 1 and isinstance(self.func[0], PF)):
-            value = self.func[0].logpf(*args, **kwargs)
-            if self.scale != None and self.scale.value != 0.:
-                value = value - self.scale.value
+            value = self.func[0].logpf(*rv_values, **kwargs)
+            if self._scale != None and self._scale.value != 0.:
+                value = value - self._scale.value
         if self.pftype == PF.DERIVED:
             if not isinstance(self.func, list) or len(self.func) != 3:
                 raise SyntaxError('DERIVED function is not recognized.')
@@ -1158,8 +1278,8 @@ class PF(object):
                             the_args.append(rv_values[irv])
                     vals[idx-1] = self.func[idx].logpf(*the_args, **kwargs)
                 value = operator.add(vals[0],vals[1])
-                if self.scale != None and self.scale.value != 0.:
-                    value = value - self.scale.value
+                if self._scale != None and self._scale.value != 0.:
+                    value = value - self._scale.value
             else:
                 raise NotImplementedError('Not yet possible...')
         else:
@@ -1168,8 +1288,8 @@ class PF(object):
                 value = self.func.logpmf(rv_values[0], *param_values)
             else:
                 value = self.func.logpdf(rv_values[0], *param_values)
-            if self.scale != None and self.scale.value != 0.:
-                value = value - self.scale.value
+            if self._scale != None and self._scale.value != 0.:
+                value = value - self._scale.value
         return self.norm.value + value 
 
     def maxlikelihood_fit(self, data, **kw):
@@ -1221,12 +1341,12 @@ class PF(object):
     def mean(self, **kw):
         """Estimate the mean of the PF.
 
-        Warning:
+        .. warning::
 
-        * In the case of a RAW PF from ``scipy.stats``, it calls the ``stats`` 
-          method and therefore returns the expected value.
-        * In the case of a DERIVED PF, it returns an estimate derived from 
-          random variates and using the ``numpy.mean`` function.
+           * In the case of a RAW PF from ``scipy.stats``, it calls the ``stats`` 
+             method and therefore returns the expected value.
+           * In the case of a DERIVED PF, it returns an estimate derived from 
+             random variates and using the ``numpy.mean`` function.
 
         Parameters
         ----------
@@ -1244,7 +1364,7 @@ class PF(object):
     def nllf(self, data, **kw):
         """Evaluate the negative log-likelihood function::
 
-            nllf = -sum_i(log(pf(x_i;params))
+            nllf = -sum_i(log(pf(x_i;params)))
 
         ``sum`` runs over the x-variates defined in data array.
 
@@ -1289,7 +1409,7 @@ class PF(object):
         * theta_r is the list of parameters of interest (Param.poi = True)
         * theta_s is the list of nuisance parameters
         * hat or double hat refers to the unconditional and conditional
-          maximum likelood estimates of the parameters respectively.
+          maximum likelilood estimates of the parameters respectively.
 
         pllr is used as a test statistics for problems with numerous 
         nuisance parameters. Asymptotically, the pllr PF is described by a
@@ -1420,10 +1540,10 @@ class PF(object):
                         param.value = kwargs[param.name]
                     shape_params.append(param.value)
                 data = self.func.rvs(*shape_params, **kwargs)
-            if self.scale != None and self.scale.value != 0.:
-                data = data * self.scale.value
-            if self.loc != None and not auto_loc:
-                data = data + self.loc.value
+            if self._scale != None and self._scale.value != 0.:
+                data = data * self._scale.value
+            if self._loc != None and not auto_loc:
+                data = data + self._loc.value
         except:
             raise
         return data
@@ -1459,9 +1579,9 @@ class PF(object):
         try:
             new = PF(func=[self])
             if isinstance(scale, Param):
-                new.scale = scale
+                new._scale = scale
             else:
-                new.scale = Param(value=scale)
+                new._scale = Param(value=scale)
         except:
             raise
         return new
@@ -1496,7 +1616,7 @@ class PF(object):
         #  - in case of a DERIVED PF, call an operator
         if (self.pftype == PF.DERIVED and isinstance(self.func, list) and
             len(self.func) == 1 and isinstance(self.func[0], PF)):
-            value = self.norm.value * self.func[0].sf(*args, **kwargs)
+            value = self.norm.value * self.func[0].sf(*rv_values, **kwargs)
             return value
         elif self.pftype == PF.DERIVED:
             if not isinstance(self.func, list) or len(self.func) != 3:
@@ -1795,11 +1915,11 @@ class PF(object):
                               len(self._rvs))
         if type(rv_values[0]) == float:
             self.logger.debug('rv values=%s', rv_values)
-        if self.loc != None and len(rv_values) == 1:
-            rv_values[0] = rv_values[0] - self.loc.value
-        if (self.scale != None and len(rv_values) == 1 and 
-            self.scale.value != 0.):
-            rv_values[0] = rv_values[0] / self.scale.value
+        if self._loc != None and len(rv_values) == 1:
+            rv_values[0] = rv_values[0] - self._loc.value
+        if (self._scale != None and len(rv_values) == 1 and 
+            self._scale.value != 0.):
+            rv_values[0] = rv_values[0] / self._scale.value
         return rv_values
 
     def _leastsq_function(self, params, xdata, ydata, weight, dx):
@@ -1841,17 +1961,17 @@ class PF(object):
                     c = rv1[2] + rv2[2]
                     d = rv1[3] + rv2[3]
                     if a == -np.inf and b == np.inf:
-                        if self.loc == None: self.loc = Param(value=1.)
-                        self.loc.value = rv1[4] + rv2[4]
-                        c = c - self.loc.value
-                        d = d - self.loc.value
+                        if self._loc == None: self._loc = Param(value=1.)
+                        self._loc.value = rv1[4] + rv2[4]
+                        c = c - self._loc.value
+                        d = d - self._loc.value
                 else:
                     a = rv1[0] - rv2[1]
                     b = rv1[1] - rv2[0]
                     c = rv1[2] - rv2[3]
                     d = rv1[3] - rv2[2]
-                    if self.loc == None: self.loc = Param(value=1.)
-                    self.loc.value = rv1[4] - rv2[4]
+                    if self._loc == None: self._loc = Param(value=1.)
+                    self._loc.value = rv1[4] - rv2[4]
                     wdt = (d - c) / 2
                     c = -wdt
                     d = wdt
@@ -1886,7 +2006,7 @@ class PF(object):
                 self._cache[rv[0]], step = np.linspace(bound[2], bound[3],
                                                        num=npts, retstep=True)
                 bin_area *= step
-                if self.loc != None:
+                if self._loc != None:
                     args1.append(self._cache[rv[0]] + rv1_bounds[0][4])
                     args2.append(self._cache[rv[0]] + rv2_bounds[0][4])
                 else:
@@ -2148,7 +2268,7 @@ class RV(object):
             if isinstance(other, RV):
                 new = RV(pf=self.pf.rvsub(other.pf))
             else:
-                new = RV(pf=self.pf.loc((-1.)*other))
+                new = RV(pf=self.pf.loc(((-1.)*other)))
         except:
             raise
         return new
@@ -2210,7 +2330,7 @@ def get_obj(obj_name):
     >>> import statspy as sp
     >>> mypmf = sp.PF('mypmf=poisson(n;lbda=5)')
     >>> lbda = sp.get_obj('lbda')
-    >>> lbda.label = '\\lambda'
+    >>> lbda.label = '\\\\lambda'
 
     """
     obj = None
@@ -2218,7 +2338,7 @@ def get_obj(obj_name):
         if not obj_name in obj_dict: continue
         if obj != None:
             logger.warning('%s is found multiple times !' % obj_name)
-        logger.debug('%s has been found in %s' % (obj_name, obj_dict))
+        logger.debug('%s has been found in %s' % (obj_name, obj_dict.keys()))
         obj = obj_dict[obj_name]['obj']
     return obj
 
