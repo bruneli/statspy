@@ -11,8 +11,8 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
-.. automodule:: statspy.core
-    :members:
+   MANUAL
+   Reference
 
 Indices and tables
 ==================
@@ -20,4 +20,3 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-
