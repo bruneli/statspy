@@ -17,7 +17,7 @@ import scipy.optimize
 import scipy.signal
 import scipy.stats
 
-__all__ = ['Param','PF','RV','logger','get_obj']
+__all__ = ['Param','PF','RV','get_obj']
 
 _dparams = {}  # Dictionary hosting the list of parameters
 _dpfs    = {}  # Dictionary hosting the list of probability functions
@@ -52,6 +52,10 @@ class Param(object):
            Current numerical value
        unc : float
            Parameter uncertainty (e.g. after minimization)
+       neg_unc : float
+           Negative parameter uncertainty (only for intervals)
+       pos_unc : float
+           Positive parameter uncertainty (only for intervals)
        bounds : list
            Defines, if necessary, the lower and upper bounds
        formula : list (optional, only for DERIVED parameters)
@@ -114,6 +118,8 @@ class Param(object):
         self.label   = kwargs.get('label', self.name)
         self.value   = kwargs.get('value', 0.)
         self.unc     = kwargs.get('unc', 0.)
+        self.neg_unc = kwargs.get('neg_unc', 0.)
+        self.pos_unc = kwargs.get('pos_unc', 0.)
         self.bounds  = kwargs.get('bounds', [])
         self.formula = kwargs.get('formula', None)
         self.strform = kwargs.get('strform', None)
@@ -1008,6 +1014,36 @@ class PF(object):
             raise
         return new
 
+    def corr(self):
+        """Returns the correlation matrix of the free parameters.
+
+        Returns
+        -------
+        corr : ndarray
+            Correlation matrix
+
+        """
+        npars = len(self._free_params)
+        if npars == 0: return None
+        popt = np.ndarray(npars)
+        punc = np.ndarray(npars)
+        for ipar,par in enumerate(self._free_params):
+            popt[ipar] = par.value
+            punc[ipar] = par.unc
+        # Build the correlation matrix
+        corr = np.ndarray((npars, npars))
+        if self._pcov != None:
+            if self._pcov.shape[0] != npars or self._pcov.shape[1] != npars:
+                raise SyntaxError('covariance matrix is not defined properly')
+            for ipar in range(npars):
+                for jpar in range(npars):
+                    corr[ipar][jpar] = self._pcov[ipar][jpar]
+                    if punc[ipar] != 0.: corr[ipar][jpar] /= punc[ipar]
+                    if punc[jpar] != 0.: corr[ipar][jpar] /= punc[jpar]
+        else:
+            corr = np.diag(np.ones(npars))
+        return corr
+
     def dF(self, x):
         """Compute the uncertainty on PF given the uncertainty on the shape
         and norm parameters.
@@ -1042,18 +1078,7 @@ class PF(object):
             popt[ipar] = par.value
             punc[ipar] = par.unc
         # Build the correlation matrix
-        corr = np.ndarray((npars, npars))
-        if self._pcov != None:
-            if self._pcov.shape[0] != npars or self._pcov.shape[1] != npars:
-                raise SyntaxError('covariance matrix is not defined properly')
-            for ipar in range(npars):
-                for jpar in range(npars):
-                    corr[ipar][jpar] = self._pcov[ipar][jpar]
-                    if punc[ipar] != 0.: corr[ipar][jpar] /= punc[ipar]
-                    if punc[jpar] != 0.: corr[ipar][jpar] /= punc[jpar]
-        else:
-            corr = np.diag(np.ones(npars))
-        mcorr = np.asmatrix(corr)
+        mcorr = np.asmatrix(self.corr())
         # Compute dF(x;th)
         if not isinstance(x, np.ndarray): x = np.asarray([x])
         pf_plus  = None
@@ -1295,9 +1320,9 @@ class PF(object):
     def maxlikelihood_fit(self, data, **kw):
         """Fit the PF to data using the maximum likelihood estimator method.
 
-        The fitting part is performed using one of the scipy.optimize 
-        minimization function. By default scipy.optimize.fmin is used, i.e.
-        the downhill simplex algorithm.
+        The fitting part is performed using the ``scipy.optimize.minimize`` 
+        function. If keyword argument ``method`` is not specified,
+        the BFGS algorithm is used.
         When calling this method, all PF parameters are minimized except
         the one which are set as 'const' before calling the method.
 
@@ -1306,21 +1331,17 @@ class PF(object):
         data : ndarray, tuple
             Data used in the computation of the (log-)likelihood function
         kw : keyword arguments (optional)
-            Keyword arguments such as
-
-            optimizer : scipy.optimize function
-                Function performing the minimization. A list of minimizer is 
-                available from scipy.optimize. If you provide your own, the
-                callable function must be defined with func and x0 as the 
-                first two arguments. Data are passed via the args. 
+            Keyword arguments passed to the scipy.optimize.minimize method.
 
         Returns
         -------
         free_params : statspy.core.Param list
-             List of the free parameters used during the fit. Their 'value'
-             arguments are extracted from the minimization process.
-        nnlfmin : float
-             Minimal value of the negative log-likelihood function
+            List of the free parameters used during the fit. Their 'value'
+            arguments are extracted from the minimization process. If the
+            Hessian is provided by the algorithm, the 'unc' argument is also
+            updated.
+        nllfmin : float
+            Minimal value of the negative log-likelihood function
 
         """
         # Define parameters which should be minimized and set initial values
@@ -1328,13 +1349,30 @@ class PF(object):
         p0 = np.ones(len(self._free_params))
         for ipar,par in enumerate(self._free_params):
              p0[ipar] = par.unbound_repr()
-        # Define and call the optimizer
-        optimizer = kw.get('optimizer', scipy.optimize.fmin)
-        popt = optimizer(self._nllf, p0, args=(data, ), disp=0)
+        # Call the minimizer (BFGS method by default)
+        kwargs = {}
+        for name in ['method', 'jac', 'hess', 'hessp', 'bounds', 'constraints',
+                     'tol', 'callback', 'options']:
+            if name in kw: kwargs[name] = kw[name]
+        result = scipy.optimize.minimize(self._nllf, p0, args=(data, ), **kwargs)
         # Manage results
+        if hasattr(result, 'hess'):
+            self._pcov = result.hess # which is in fact the inverse hessian
+        else:
+            self._pcov = None
         for ipar,par in enumerate(self._free_params):
-            val2, unc2 = par.unbound_to_bound(popt[ipar])
-            par.value = val2
+            val = result.x[ipar]
+            unc = 0.
+            if (self._pcov)[ipar][ipar] >= 0.:
+                unc = math.sqrt((self._pcov)[ipar][ipar])
+            val2, unc2 = par.unbound_to_bound(val, unc)
+            par._pcov = []
+            for jpar, par2 in enumerate(self._free_params):
+                if unc == 0.: continue
+                self._pcov[ipar][jpar] *= (unc2 / unc)
+                self._pcov[jpar][ipar] *= (unc2 / unc)
+                if jpar != ipar:
+                    par._pcov.append([par2, self._pcov[jpar][ipar]])
         nllfmin = self.nllf(data)
         return self._free_params, nllfmin
 
@@ -1399,7 +1437,7 @@ class PF(object):
 
             l = L(x|theta_r,\hat{\hat{theta_s}}) / L(x|\hat{theta_r},\hat{theta_s})
 
-        The profile log-likehood ratio is then::
+        The profile log-likelihood ratio is then::
 
             q = -2 * log(l)
 
@@ -1425,9 +1463,12 @@ class PF(object):
             Specify any Parameter of interest name of the considered PF,
             or any option used by the method maxlikelihood_fit.
 
+            uncond_nllf : float
+                unconditional minimal negative log-likelihood function value
+
         Returns
         -------
-        pllf : float
+        pllr : float
             Profile log-likelihood ratio times -2
 
         """
@@ -1444,10 +1485,13 @@ class PF(object):
         for idx,poi in enumerate(lpois):
             poi.const = True
         cond_params, cond_nllf = self.maxlikelihood_fit(data, **kw)
+        # Compute the unconditional nllf (pois are treated as free parameters)
+        # if not provided
         for idx,poi in enumerate(lpois):
             poi.const = False
-        # Compute the unconditional nllf (pois are treated as free parameters)
-        uncond_params, uncond_nllf = self.maxlikelihood_fit(data, **kw)
+        uncond_nllf = kw.get('uncond_nllf', None)
+        if uncond_nllf == None:
+            uncond_params, uncond_nllf = self.maxlikelihood_fit(data, **kw)
         # Evaluate the pllr
         pllr = 2. * (cond_nllf - uncond_nllf)
         return pllr

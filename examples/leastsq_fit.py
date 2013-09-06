@@ -16,7 +16,7 @@ pdf_true_sig = sp.PF("pdf_true_sig=norm(x;mu_true=125,sigma_true=10)")
 pdf_true_bkg = sp.PF("pdf_true_bkg=expon(x;offset_true=50,lambda_true=20)")
 pdf_true = 0.95 * pdf_true_bkg + 0.05 * pdf_true_sig
 # Sample data from the true PDF
-nexp = 10000 # number of expected events
+nexp = 2000 # number of expected events
 nobs = scipy.stats.poisson.rvs(nexp, size=1)[0]
 data = pdf_true.rvs(size=nobs)
 
