@@ -34,6 +34,12 @@
           <a href="genindex.html" title="General Index"
              accesskey="I">index</a></li>
         <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="np-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
           <a href="MANUAL.html" title="StatsPy Users Guide"
              accesskey="P">previous</a> |</li>
         <li><a href="index.html">StatsPy 0.1.0a1 documentation</a> &raquo;</li> 
@@ -54,7 +60,8 @@
 <li><a class="reference internal" href="#parameter" id="id6">Parameter</a></li>
 <li><a class="reference internal" href="#probability-function" id="id7">Probability Function</a></li>
 <li><a class="reference internal" href="#random-variable" id="id8">Random Variable</a></li>
-<li><a class="reference internal" href="#miscellaneous-functions" id="id9">Miscellaneous functions</a></li>
+<li><a class="reference internal" href="#module-statspy.interval" id="id9">Interval estimation</a></li>
+<li><a class="reference internal" href="#miscellaneous-functions" id="id10">Miscellaneous functions</a></li>
 </ul>
 </li>
 </ul>
@@ -119,6 +126,14 @@ analytical formula.</li>
 <tr class="row-even"><td>unc</td>
 <td>float</td>
 <td>Parameter uncertainty (e.g. after minimization)</td>
+</tr>
+<tr class="row-odd"><td>neg_unc</td>
+<td>float</td>
+<td>Negative parameter uncertainty (only for intervals)</td>
+</tr>
+<tr class="row-even"><td>pos_unc</td>
+<td>float</td>
+<td>Positive parameter uncertainty (only for intervals)</td>
 </tr>
 <tr class="row-odd"><td>bounds</td>
 <td>list</td>
@@ -710,6 +725,24 @@ different options set by mode.</p>
 </dd></dl>
 
 <dl class="method">
+<dt id="statspy.core.PF.corr">
+<tt class="descname">corr</tt><big>(</big><big>)</big><a class="headerlink" href="#statspy.core.PF.corr" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the correlation matrix of the free parameters.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>corr</strong> : ndarray</p>
+<blockquote class="last">
+<div><p>Correlation matrix</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
 <dt id="statspy.core.PF.dF">
 <tt class="descname">dF</tt><big>(</big><em>x</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.dF"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.dF" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compute the uncertainty on PF given the uncertainty on the shape
@@ -872,9 +905,9 @@ ndf the number of degrees of freedom.</p>
 <dt id="statspy.core.PF.maxlikelihood_fit">
 <tt class="descname">maxlikelihood_fit</tt><big>(</big><em>data</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.maxlikelihood_fit"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.maxlikelihood_fit" title="Permalink to this definition">¶</a></dt>
 <dd><p>Fit the PF to data using the maximum likelihood estimator method.</p>
-<p>The fitting part is performed using one of the scipy.optimize 
-minimization function. By default scipy.optimize.fmin is used, i.e.
-the downhill simplex algorithm.
+<p>The fitting part is performed using the <tt class="docutils literal"><span class="pre">scipy.optimize.minimize</span></tt> 
+function. If keyword argument <tt class="docutils literal"><span class="pre">method</span></tt> is not specified,
+the BFGS algorithm is used.
 When calling this method, all PF parameters are minimized except
 the one which are set as &#8216;const&#8217; before calling the method.</p>
 <table class="docutils field-list" frame="void" rules="none">
@@ -887,24 +920,18 @@ the one which are set as &#8216;const&#8217; before calling the method.</p>
 </div></blockquote>
 <p><strong>kw</strong> : keyword arguments (optional)</p>
 <blockquote>
-<div><p>Keyword arguments such as</p>
-<dl class="docutils">
-<dt>optimizer <span class="classifier-delimiter">:</span> <span class="classifier">scipy.optimize function</span></dt>
-<dd><p class="first last">Function performing the minimization. A list of minimizer is 
-available from scipy.optimize. If you provide your own, the
-callable function must be defined with func and x0 as the 
-first two arguments. Data are passed via the args.</p>
-</dd>
-</dl>
+<div><p>Keyword arguments passed to the scipy.optimize.minimize method.</p>
 </div></blockquote>
 </td>
 </tr>
 <tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>free_params</strong> : statspy.core.Param list</p>
 <blockquote>
 <div><p>List of the free parameters used during the fit. Their &#8216;value&#8217;
-arguments are extracted from the minimization process.</p>
+arguments are extracted from the minimization process. If the
+Hessian is provided by the algorithm, the &#8216;unc&#8217; argument is also
+updated.</p>
 </div></blockquote>
-<p><strong>nnlfmin</strong> : float</p>
+<p><strong>nllfmin</strong> : float</p>
 <blockquote class="last">
 <div><p>Minimal value of the negative log-likelihood function</p>
 </div></blockquote>
@@ -948,7 +975,7 @@ random variates and using the <tt class="docutils literal"><span class="pre">num
 <dt id="statspy.core.PF.nllf">
 <tt class="descname">nllf</tt><big>(</big><em>data</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.nllf"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.nllf" title="Permalink to this definition">¶</a></dt>
 <dd><p>Evaluate the negative log-likelihood function:</p>
-<div class="highlight-python"><pre>nllf = -sum_i(log(pf(x_i;params))</pre>
+<div class="highlight-python"><pre>nllf = -sum_i(log(pf(x_i;params)))</pre>
 </div>
 <p><tt class="docutils literal"><span class="pre">sum</span></tt> runs over the x-variates defined in data array.</p>
 <table class="docutils field-list" frame="void" rules="none">
@@ -982,7 +1009,7 @@ random variates and using the <tt class="docutils literal"><span class="pre">num
 <p>The profile likelihood ratio is defined by:</p>
 <div class="highlight-python"><pre>l = L(x|theta_r,\hat{\hat{theta_s}}) / L(x|\hat{theta_r},\hat{theta_s})</pre>
 </div>
-<p>The profile log-likehood ratio is then:</p>
+<p>The profile log-likelihood ratio is then:</p>
 <div class="highlight-python"><div class="highlight"><pre><span class="n">q</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">log</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -1011,10 +1038,15 @@ Further information on the likelihood ratio can be found in Chapter
 <blockquote>
 <div><p>Specify any Parameter of interest name of the considered PF,
 or any option used by the method maxlikelihood_fit.</p>
+<dl class="docutils">
+<dt>uncond_nllf <span class="classifier-delimiter">:</span> <span class="classifier">float</span></dt>
+<dd><p class="first last">unconditional minimal negative log-likelihood function value</p>
+</dd>
+</dl>
 </div></blockquote>
 </td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>pllf</strong> : float</p>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>pllr</strong> : float</p>
 <blockquote class="last">
 <div><p>Profile log-likelihood ratio times -2</p>
 </div></blockquote>
@@ -1358,8 +1390,90 @@ Caveat: this method assumes <em>independent</em> random variables.</p>
 </dd></dl>
 
 </div>
+<div class="section" id="module-statspy.interval">
+<span id="interval-estimation"></span><h2><a class="toc-backref" href="#id9">Interval estimation</a><a class="headerlink" href="#module-statspy.interval" title="Permalink to this headline">¶</a></h2>
+<p>module interval.py</p>
+<p>This module contains functions to estimate confidence or credible intervals.</p>
+<dl class="function">
+<dt id="statspy.interval.pllr">
+<tt class="descclassname">statspy.interval.</tt><tt class="descname">pllr</tt><big>(</big><em>pf</em>, <em>data</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/interval.html#pllr"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.interval.pllr" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute confidence intervals using a profile likelihood ratio method.</p>
+<p>Interval estimation is done through steps:</p>
+<ul>
+<li><p class="first">The (minus log-)likelihood is computed from <tt class="docutils literal"><span class="pre">pf</span></tt> and <tt class="docutils literal"><span class="pre">data</span></tt> via the
+<tt class="docutils literal"><span class="pre">PF.nllf</span></tt> method.</p>
+</li>
+<li><p class="first">Best estimates hat{theta_i} for each parameter theta_i are computed with
+the <tt class="docutils literal"><span class="pre">PF.maxlikelihood_fit</span></tt> method.</p>
+</li>
+<li><p class="first">The confidence interval of theta_i around its best estimate is computed
+from a profile log-likelihood ratio function q defined as:</p>
+<div class="highlight-python"><pre>l = L(x|theta_i,\hat{\hat{theta_s}}) / L(x|\hat{theta_i},\hat{theta_s})
+q(theta_i) = -2 * log(l)</pre>
+</div>
+<p>where L is the likelihood function and theta_s are the nuisance 
+parameters.</p>
+</li>
+<li><p class="first">q(theta_i) is assumed to be described as a chi2 distribution (Wilks&#8217;
+theorem). Bounds corresponding to a given confidence level (CL) are found
+by searching values for which q(theta_i) is equal to the chi2 quantile of 
+CL:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">quantile</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">chi2</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">cl</span><span class="p">,</span> <span class="n">ndf</span><span class="p">)</span>
+</pre></div>
+</div>
+</li>
+</ul>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>pf</strong> : statspy.core.PF</p>
+<blockquote>
+<div><p>Probability function used in the computed of the likelihood</p>
+</div></blockquote>
+<p><strong>data</strong> : ndarray, tuple</p>
+<blockquote>
+<div><p>x - variates used in the computation of the likelihood</p>
+</div></blockquote>
+<p><strong>kw</strong> : keyword arguments (optional)</p>
+<blockquote>
+<div><p>Possible keyword arguments are:</p>
+<dl class="docutils">
+<dt>cl <span class="classifier-delimiter">:</span> <span class="classifier">float</span></dt>
+<dd><p class="first last">Confidence level (0.6827 by default)</p>
+</dd>
+<dt>ndf <span class="classifier-delimiter">:</span> <span class="classifier">int</span></dt>
+<dd><p class="first last">Number of degrees of freedom (1 by default)</p>
+</dd>
+<dt>root_finder <span class="classifier-delimiter">:</span> <span class="classifier">scipy.optimize function</span></dt>
+<dd><p class="first last">Root finder algorithm (scipy.optimize.brentq by default)</p>
+</dd>
+</dl>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>params</strong> : statspy.core.Param list</p>
+<blockquote>
+<div><p>List of the parameters for which a confidence interval has been
+extracted including updated &#8216;value&#8217;, &#8216;neg_unc&#8217; and &#8216;pos_unc&#8217; arguments.</p>
+</div></blockquote>
+<p><strong>corr</strong> : ndarray</p>
+<blockquote>
+<div><p>Correlation matrix</p>
+</div></blockquote>
+<p><strong>quantile</strong> : float</p>
+<blockquote class="last">
+<div><p>Quantile used in the computation of bounds</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
 <div class="section" id="miscellaneous-functions">
-<h2><a class="toc-backref" href="#id9">Miscellaneous functions</a><a class="headerlink" href="#miscellaneous-functions" title="Permalink to this headline">¶</a></h2>
+<h2><a class="toc-backref" href="#id10">Miscellaneous functions</a><a class="headerlink" href="#miscellaneous-functions" title="Permalink to this headline">¶</a></h2>
 <dl class="function">
 <dt id="statspy.core.get_obj">
 <tt class="descclassname">statspy.core.</tt><tt class="descname">get_obj</tt><big>(</big><em>obj_name</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#get_obj"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.get_obj" title="Permalink to this definition">¶</a></dt>
@@ -1408,6 +1522,7 @@ and returns it.</p>
 <li><a class="reference internal" href="#parameter">Parameter</a></li>
 <li><a class="reference internal" href="#probability-function">Probability Function</a></li>
 <li><a class="reference internal" href="#random-variable">Random Variable</a></li>
+<li><a class="reference internal" href="#module-statspy.interval">Interval estimation</a></li>
 <li><a class="reference internal" href="#miscellaneous-functions">Miscellaneous functions</a></li>
 </ul>
 </li>
@@ -1444,6 +1559,12 @@ and returns it.</p>
         <li class="right" style="margin-right: 10px">
           <a href="genindex.html" title="General Index"
              >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="np-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
         <li class="right" >
           <a href="MANUAL.html" title="StatsPy Users Guide"
              >previous</a> |</li>

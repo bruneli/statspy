@@ -245,8 +245,51 @@ probability function can be fitted to data via two widely used methods.
     >>> pdf_fit.maxlikelihood_fit(data)
     ([mu_fit = 19.5111374418, sigma_fit = 5.12291410326], 41.053294585533187)
 
-Making hypothesis tests
-^^^^^^^^^^^^^^^^^^^^^^^
+Intervals estimation
+^^^^^^^^^^^^^^^^^^^^
 
-Evaluating confidence intervals
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Interval estimation allows one to not only quote a point estimate of a
+parameter but an interval of possible values. They are named confidence
+intervals in a frequentist approach and credible intervals with a Bayesian
+method. The aim of the module ``statspy.interval`` is provide functions to
+conveniently compute both type of intervals.
+
+.. note:: currently only the PLLR method (popular in HEP) is provided. Aim
+          is to add another method (Neyman construction) and a Bayesian
+          method
+
+* The profile likelihood ratio method is an approximate frequentist approach
+  relying on the profile likelihood ratio statistics and the Wilks' theorem
+  to build confidence intervals. Its main advantage with respect to other
+  frequentist methods like the Neyman constructions is its speed and the
+  possibility to apply it also in problems with a large number of (nuisance)
+  parameters.
+  To get an approximate confidence interval on a parameter 
+  :math:`\theta_i`, the algorithm consists in:
+
+  * Get the maximum likelihood estimate :math:`\hat{\theta}_i` as central value
+  * Define a profile log-likehood ratio function :math:`q(\theta_i)` as
+        .. math::
+
+            \Lambda(\theta_i) = \frac{L(x|\theta_i,\hat{\hat{\theta}}_s)}{L(x|\hat{\theta}_i,\hat{\theta}_s)}
+
+        .. math::
+
+            q(\theta_i) = -2 log(\Lambda(\theta_i))
+
+    where :math:`L(x|\theta_i,\hat{\hat{\theta}}_s)` and 
+    :math:`L(x|\hat{\theta}_i,\hat{\theta}_s)` are the conditional and
+    unconditional likelihood functions respectively.
+  * Search for values of :math:`q(\theta_i)` equaling quantile defined as::
+
+      quantile = scipy.stats.chi2.ppf(cl, ndf)
+
+    where cl is the confidence level and ndf the number of degrees of freedom.
+    This formula relies on the fact that the profile likelihood ratio is
+    asymptotically distributed by a chi2 function (Wilks' theorem). In 
+    practical cases, it is therefore an approximation which can be verified
+    with a toy MC technique. 
+
+Hypothesis tests
+^^^^^^^^^^^^^^^^
+

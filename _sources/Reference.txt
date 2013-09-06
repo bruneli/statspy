@@ -19,6 +19,10 @@ Random Variable
 .. autoclass:: statspy.core.RV
     :members:
 
+Interval estimation 
+-------------------
+.. automodule:: statspy.interval
+
 Miscellaneous functions
 -----------------------
 .. autofunction:: statspy.core.get_obj

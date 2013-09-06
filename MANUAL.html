@@ -35,6 +35,12 @@
           <a href="genindex.html" title="General Index"
              accesskey="I">index</a></li>
         <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="np-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
           <a href="Reference.html" title="StatsPy Reference Guide"
              accesskey="N">next</a> |</li>
         <li class="right" >
@@ -70,8 +76,8 @@
 </li>
 <li><a class="reference internal" href="#statistical-inference-with-statspy" id="id12">Statistical inference with StatsPy</a><ul>
 <li><a class="reference internal" href="#parameters-estimation" id="id13">Parameters estimation</a></li>
-<li><a class="reference internal" href="#making-hypothesis-tests" id="id14">Making hypothesis tests</a></li>
-<li><a class="reference internal" href="#evaluating-confidence-intervals" id="id15">Evaluating confidence intervals</a></li>
+<li><a class="reference internal" href="#intervals-estimation" id="id14">Intervals estimation</a></li>
+<li><a class="reference internal" href="#hypothesis-tests" id="id15">Hypothesis tests</a></li>
 </ul>
 </li>
 </ul>
@@ -331,11 +337,67 @@ are computed using some approximation of the Hessian matrix.</p>
 </li>
 </ul>
 </div>
-<div class="section" id="making-hypothesis-tests">
-<h3><a class="toc-backref" href="#id14">Making hypothesis tests</a><a class="headerlink" href="#making-hypothesis-tests" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="intervals-estimation">
+<h3><a class="toc-backref" href="#id14">Intervals estimation</a><a class="headerlink" href="#intervals-estimation" title="Permalink to this headline">¶</a></h3>
+<p>Interval estimation allows one to not only quote a point estimate of a
+parameter but an interval of possible values. They are named confidence
+intervals in a frequentist approach and credible intervals with a Bayesian
+method. The aim of the module <tt class="docutils literal"><span class="pre">statspy.interval</span></tt> is provide functions to
+conveniently compute both type of intervals.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">currently only the PLLR method (popular in HEP) is provided. Aim
+is to add another method (Neyman construction) and a Bayesian
+method</p>
 </div>
-<div class="section" id="evaluating-confidence-intervals">
-<h3><a class="toc-backref" href="#id15">Evaluating confidence intervals</a><a class="headerlink" href="#evaluating-confidence-intervals" title="Permalink to this headline">¶</a></h3>
+<ul>
+<li><p class="first">The profile likelihood ratio method is an approximate frequentist approach
+relying on the profile likelihood ratio statistics and the Wilks&#8217; theorem
+to build confidence intervals. Its main advantage with respect to other
+frequentist methods like the Neyman constructions is its speed and the
+possibility to apply it also in problems with a large number of (nuisance)
+parameters.
+To get an approximate confidence interval on a parameter
+<span class="formula"><i>θ</i><sub><i>i</i></sub></span>
+, the algorithm consists in:</p>
+<ul>
+<li><p class="first">Get the maximum likelihood estimate <span class="formula"><i>θ̂</i><sub><i>i</i></sub></span>
+ as central value</p>
+</li>
+<li><dl class="first docutils">
+<dt>Define a profile log-likehood ratio function <span class="formula"><i>q</i>(<i>θ</i><sub><i>i</i></sub>)</span>
+ as</dt>
+<dd><div class="first formula">
+Λ(<i>θ</i><sub><i>i</i></sub>) = <span class="fraction"><span class="ignored">(</span><span class="numerator"><i>L</i>(<i>x</i>|<i>θ</i><sub><i>i</i></sub>, <i>θ̂̂</i><sub><i>s</i></sub>)</span><span class="ignored">)/(</span><span class="denominator"><i>L</i>(<i>x</i>|<i>θ̂</i><sub><i>i</i></sub>, <i>θ̂</i><sub><i>s</i></sub>)</span><span class="ignored">)</span></span>
+</div>
+<div class="last formula">
+<i>q</i>(<i>θ</i><sub><i>i</i></sub>) =  − 2<i>log</i>(Λ(<i>θ</i><sub><i>i</i></sub>))
+</div>
+</dd>
+</dl>
+<p>where <span class="formula"><i>L</i>(<i>x</i>|<i>θ</i><sub><i>i</i></sub>, <i>θ̂̂</i><sub><i>s</i></sub>)</span>
+ and
+<span class="formula"><i>L</i>(<i>x</i>|<i>θ̂</i><sub><i>i</i></sub>, <i>θ̂</i><sub><i>s</i></sub>)</span>
+ are the conditional and
+unconditional likelihood functions respectively.</p>
+</li>
+<li><p class="first">Search for values of <span class="formula"><i>q</i>(<i>θ</i><sub><i>i</i></sub>)</span>
+ equaling quantile defined as:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">quantile</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">chi2</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">cl</span><span class="p">,</span> <span class="n">ndf</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>where cl is the confidence level and ndf the number of degrees of freedom.
+This formula relies on the fact that the profile likelihood ratio is
+asymptotically distributed by a chi2 function (Wilks&#8217; theorem). In
+practical cases, it is therefore an approximation which can be verified
+with a toy MC technique.</p>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="hypothesis-tests">
+<h3><a class="toc-backref" href="#id15">Hypothesis tests</a><a class="headerlink" href="#hypothesis-tests" title="Permalink to this headline">¶</a></h3>
 </div>
 </div>
 </div>
@@ -364,8 +426,8 @@ are computed using some approximation of the Hessian matrix.</p>
 </li>
 <li><a class="reference internal" href="#statistical-inference-with-statspy">Statistical inference with StatsPy</a><ul>
 <li><a class="reference internal" href="#parameters-estimation">Parameters estimation</a></li>
-<li><a class="reference internal" href="#making-hypothesis-tests">Making hypothesis tests</a></li>
-<li><a class="reference internal" href="#evaluating-confidence-intervals">Evaluating confidence intervals</a></li>
+<li><a class="reference internal" href="#intervals-estimation">Intervals estimation</a></li>
+<li><a class="reference internal" href="#hypothesis-tests">Hypothesis tests</a></li>
 </ul>
 </li>
 </ul>
@@ -406,6 +468,12 @@ are computed using some approximation of the Hessian matrix.</p>
         <li class="right" style="margin-right: 10px">
           <a href="genindex.html" title="General Index"
              >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="np-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
         <li class="right" >
           <a href="Reference.html" title="StatsPy Reference Guide"
              >next</a> |</li>
