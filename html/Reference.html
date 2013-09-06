@@ -1,0 +1,1579 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>StatsPy Reference Guide &mdash; StatsPy 0.1.0a1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.1.0a1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="StatsPy 0.1.0a1 documentation" href="index.html" />
+    <link rel="prev" title="StatsPy Users Guide" href="MANUAL.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="np-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="MANUAL.html" title="StatsPy Users Guide"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">StatsPy 0.1.0a1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="statspy-reference-guide">
+<h1><a class="toc-backref" href="#id5">StatsPy Reference Guide</a><a class="headerlink" href="#statspy-reference-guide" title="Permalink to this headline">¶</a></h1>
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#statspy-reference-guide" id="id5">StatsPy Reference Guide</a><ul>
+<li><a class="reference internal" href="#parameter" id="id6">Parameter</a></li>
+<li><a class="reference internal" href="#probability-function" id="id7">Probability Function</a></li>
+<li><a class="reference internal" href="#random-variable" id="id8">Random Variable</a></li>
+<li><a class="reference internal" href="#module-statspy.interval" id="id9">Interval estimation</a></li>
+<li><a class="reference internal" href="#miscellaneous-functions" id="id10">Miscellaneous functions</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="parameter">
+<h2><a class="toc-backref" href="#id6">Parameter</a><a class="headerlink" href="#parameter" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="statspy.core.Param">
+<em class="property">class </em><tt class="descclassname">statspy.core.</tt><tt class="descname">Param</tt><big>(</big><em>*args</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param" title="Permalink to this definition">¶</a></dt>
+<dd><p>Base class to define a PF shape parameter.</p>
+<p>Two types of parameters can be built:</p>
+<ul class="simple">
+<li>RAW parameters do not depend on any other parameter and have
+a value directly associated to them</li>
+<li>DERIVED parameters are obtained from other parameters via an 
+analytical formula.</li>
+</ul>
+<p class="rubric">Examples</p>
+<p>Declarations:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">statspy</span> <span class="kn">as</span> <span class="nn">sp</span> 
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mu</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Param</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">&quot;mu&quot;</span><span class="p">,</span><span class="n">value</span><span class="o">=</span><span class="mf">10.</span><span class="p">,</span><span class="n">label</span><span class="o">=</span><span class="s">&quot;</span><span class="se">\\</span><span class="s">mu&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Param</span><span class="p">(</span><span class="s">&quot;x = 10. +- 2.&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="o">.</span><span class="n">value</span>
+<span class="go">10.0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="o">.</span><span class="n">unc</span>
+<span class="go">2.0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">y</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Param</span><span class="p">(</span><span class="s">&quot;y = 5.&quot;</span><span class="p">,</span> <span class="n">unc</span><span class="o">=</span><span class="mf">1.</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Operations, building DERIVED parameters:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">+</span> <span class="n">y</span>
+<span class="go">x + y = 15.0 +- 2.2360679775</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">z</span> <span class="o">=</span> <span class="n">x</span> <span class="o">*</span> <span class="n">y</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">z</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s">&#39;z&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">z</span>
+<span class="go">z = x * y = 50.0 +- 14.1421356237</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="o">**</span><span class="mi">2</span>
+<span class="go">x ** 2 = 100.0 +- 40.0</span>
+</pre></div>
+</div>
+<p>Possible operations are <tt class="docutils literal"><span class="pre">+,-,*,/,**</span></tt>.</p>
+<p class="rubric">Attributes</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="8%" />
+<col width="36%" />
+<col width="55%" />
+</colgroup>
+<tbody valign="top">
+<tr class="row-odd"><td>name</td>
+<td>str</td>
+<td>Random Variable name</td>
+</tr>
+<tr class="row-even"><td>label</td>
+<td>str</td>
+<td>Random Variable name for printing purposes</td>
+</tr>
+<tr class="row-odd"><td>value</td>
+<td>float</td>
+<td>Current numerical value</td>
+</tr>
+<tr class="row-even"><td>unc</td>
+<td>float</td>
+<td>Parameter uncertainty (e.g. after minimization)</td>
+</tr>
+<tr class="row-odd"><td>neg_unc</td>
+<td>float</td>
+<td>Negative parameter uncertainty (only for intervals)</td>
+</tr>
+<tr class="row-even"><td>pos_unc</td>
+<td>float</td>
+<td>Positive parameter uncertainty (only for intervals)</td>
+</tr>
+<tr class="row-odd"><td>bounds</td>
+<td>list</td>
+<td>Defines, if necessary, the lower and upper bounds</td>
+</tr>
+<tr class="row-even"><td>formula</td>
+<td>list (optional, only for DERIVED parameters)</td>
+<td>List of operators and parameters used to parse an analytic function</td>
+</tr>
+<tr class="row-odd"><td>strform</td>
+<td>str (optional, only for DERIVED parameters)</td>
+<td>Representation of the formula as a string</td>
+</tr>
+<tr class="row-even"><td>partype</td>
+<td>Param.RAW or Param.DERIVED</td>
+<td>Tells whether it is a RAW or a DERIVED parameter</td>
+</tr>
+<tr class="row-odd"><td>const</td>
+<td>bool</td>
+<td>Tells whether a parameter is fixed during a minimazation process.
+It is not a constant in the sense of programming.</td>
+</tr>
+<tr class="row-even"><td>poi</td>
+<td>bool</td>
+<td>Tells whether a parameter is a parameter of interest in an
+hypothesis test.</td>
+</tr>
+<tr class="row-odd"><td>isuptodate</td>
+<td>bool</td>
+<td>Tells whether value needs to be computed again or not</td>
+</tr>
+<tr class="row-even"><td>logger</td>
+<td>logging.Logger</td>
+<td>message logging system</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Methods</p>
+<dl class="method">
+<dt id="statspy.core.Param.__add__">
+<tt class="descname">__add__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__add__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__add__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add a parameter to another parameter or a numerical value.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : Param</p>
+<p><strong>other</strong> : Param, int, long, float</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : Param</p>
+<blockquote class="last">
+<div><p>new parameter which is the sum of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__call__">
+<tt class="descname">__call__</tt><big>(</big><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__call__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__call__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the parameter value.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>self.value</strong> : float</p>
+<blockquote class="last">
+<div><p>Parameter value possibly recomputed from self.formula
+if self.isuptodate is False.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__div__">
+<tt class="descname">__div__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__div__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__div__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Divide a parameter by another parameter or by a numerical value.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : Param</p>
+<p><strong>other</strong> : Param, int, long, float</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : Param</p>
+<blockquote class="last">
+<div><p>new parameter which is the ratio of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__getattribute__">
+<tt class="descname">__getattribute__</tt><big>(</big><em>name</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__getattribute__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__getattribute__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Overload __getattribute__ to update the value attribute from the 
+formula for a DERIVED parameter.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__iadd__">
+<tt class="descname">__iadd__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__iadd__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__iadd__" title="Permalink to this definition">¶</a></dt>
+<dd><p>In-place addition (+=)</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : Param</p>
+<p><strong>other</strong> : Param, int, long, float</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>self</strong> : Param</p>
+<blockquote class="last">
+<div><p>self parameter modified by other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__imul__">
+<tt class="descname">__imul__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__imul__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__imul__" title="Permalink to this definition">¶</a></dt>
+<dd><p>In-place multiplication (<a href="#id1"><span class="problematic" id="id2">*</span></a>=)</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : Param</p>
+<p><strong>other</strong> : Param, int, long, float</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>self</strong> : Param</p>
+<blockquote class="last">
+<div><p>self parameter modified by other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__isub__">
+<tt class="descname">__isub__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__isub__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__isub__" title="Permalink to this definition">¶</a></dt>
+<dd><p>In-place subtraction (-=)</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : Param</p>
+<p><strong>other</strong> : Param, int, long, float</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>self</strong> : Param</p>
+<blockquote class="last">
+<div><p>self parameter modified by other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__mul__">
+<tt class="descname">__mul__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__mul__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__mul__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Multiply a parameter by another parameter or by a numerical value.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : Param</p>
+<p><strong>other</strong> : Param, int, long, float</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : Param</p>
+<blockquote class="last">
+<div><p>new parameter which is the product of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__pow__">
+<tt class="descname">__pow__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__pow__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__pow__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Raise a parameter the power.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : Param</p>
+<p><strong>other</strong> : Param, int, long, float</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : Param</p>
+<blockquote class="last">
+<div><p>new parameter which is self raised to the power of other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__radd__">
+<tt class="descname">__radd__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__radd__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__radd__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add a numerical value to a parameter</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__rdiv__">
+<tt class="descname">__rdiv__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__rdiv__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__rdiv__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Divide a numerical value by a parameter</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__repr__">
+<tt class="descname">__repr__</tt><big>(</big><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__repr__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__repr__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return Parameter value and formula if DERIVED</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__rmul__">
+<tt class="descname">__rmul__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__rmul__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__rmul__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Multiply a numerival value by a parameter</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__rpow__">
+<tt class="descname">__rpow__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__rpow__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__rpow__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Raise a numerical value to the power</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__rsub__">
+<tt class="descname">__rsub__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__rsub__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__rsub__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Subtract a numerical value to a parameter</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__setattr__">
+<tt class="descname">__setattr__</tt><big>(</big><em>name</em>, <em>value</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__setattr__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__setattr__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Overload __setattr__ to make sure that quantities based on this
+parameter will be updated when its value is modified.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.__sub__">
+<tt class="descname">__sub__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.__sub__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.__sub__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Subtract a parameter to another parameter or a numerical value.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : Param</p>
+<p><strong>other</strong> : Param, int, long, float</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : Param</p>
+<blockquote class="last">
+<div><p>new parameter which is the difference of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="statspy.core.Param.__weakref__">
+<tt class="descname">__weakref__</tt><a class="headerlink" href="#statspy.core.Param.__weakref__" title="Permalink to this definition">¶</a></dt>
+<dd><p>list of weak references to the object (if defined)</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.get_raw_params">
+<tt class="descname">get_raw_params</tt><big>(</big><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.get_raw_params"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.get_raw_params" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the list of RAW parameters from a DERIVED parameter</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.unbound_repr">
+<tt class="descname">unbound_repr</tt><big>(</big><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.unbound_repr"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.unbound_repr" title="Permalink to this definition">¶</a></dt>
+<dd><p>Transform the value of the parameter such as it has no bounds.</p>
+<p>This method is used with the minimization algorithms which require
+only unbound parameters. The transformation formula from a
+double-sided or a one-sided parameter to an unbound parameter are 
+described in Section 1.3.1 of the MINUIT manual:
+Fred James, Matthias Winkler, MINUIT User&#8217;s Guide, June 16, 2004.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : float</p>
+<blockquote class="last">
+<div><p>parameter value within an unbound representation.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.Param.unbound_to_bound">
+<tt class="descname">unbound_to_bound</tt><big>(</big><em>val</em>, <em>unc=0.0</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#Param.unbound_to_bound"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.Param.unbound_to_bound" title="Permalink to this definition">¶</a></dt>
+<dd><p>Transform the parameter value from an unbound to a bounded 
+representation.</p>
+<p>This method is used with the minimization algorithms which require
+only unbound parameters. The transformation formula from an unbound
+parameter to a double-sided or a one-sided parameter are described in
+Section 1.3.1 of the MINUIT manual:
+Fred James, Matthias Winkler, MINUIT User&#8217;s Guide, June 16, 2004.
+Since the transformation is non-linear, the transformation of the
+uncertainty is approximate and based on the error propagation 
+formula. In particular, when the value is close to its limit, the
+uncertainty is not trustable and a more refined analysis should be 
+performed.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>val</strong> : float</p>
+<blockquote>
+<div><p>parameter value within an unbound representation</p>
+</div></blockquote>
+<p><strong>unc</strong> : float</p>
+<blockquote class="last">
+<div><p>parameter uncertainty within an unbound representation</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="probability-function">
+<h2><a class="toc-backref" href="#id7">Probability Function</a><a class="headerlink" href="#probability-function" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="statspy.core.PF">
+<em class="property">class </em><tt class="descclassname">statspy.core.</tt><tt class="descname">PF</tt><big>(</big><em>*args</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF" title="Permalink to this definition">¶</a></dt>
+<dd><p>Base class to define a Probability Function.</p>
+<p>Probability Function is a generic name which includes both the
+probability mass function for discrete random variables and the
+probability density fucntion for continuous random variables.
+The function itself is defined in <tt class="docutils literal"><span class="pre">self.func</span></tt>:</p>
+<ul class="simple">
+<li>For a RAW PF, it is a pdf or a pmf of scipy.stats.</li>
+<li>For a DERIVED PF, it is list containing an operator and 
+pointers to other PFs.</li>
+</ul>
+<p class="rubric">Examples</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">statspy</span> <span class="kn">as</span> <span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pmf_n</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">PF</span><span class="p">(</span><span class="s">&quot;pmf_n=poisson(n;mu)&quot;</span><span class="p">,</span><span class="n">mu</span><span class="o">=</span><span class="mf">10.</span><span class="p">)</span>
+</pre></div>
+</div>
+<p class="rubric">Attributes</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="9%" />
+<col width="36%" />
+<col width="55%" />
+</colgroup>
+<tbody valign="top">
+<tr class="row-odd"><td>name</td>
+<td>str (optional)</td>
+<td>Function name</td>
+</tr>
+<tr class="row-even"><td>func</td>
+<td>scipy.stats.distributions.rv_generic, list</td>
+<td>Probability Density Function object.</td>
+</tr>
+<tr class="row-odd"><td>params</td>
+<td>statspy.core.Param list</td>
+<td>List of shape parameters used to define the pf</td>
+</tr>
+<tr class="row-even"><td>norm</td>
+<td>Param</td>
+<td>Normalization parameter set to 1 by default. It can be different
+from 1 when the PF is fitted to data.</td>
+</tr>
+<tr class="row-odd"><td>isuptodate</td>
+<td>bool</td>
+<td>Tells whether PF needs to be normalized or not</td>
+</tr>
+<tr class="row-even"><td>options</td>
+<td>dict</td>
+<td>Potential list of options</td>
+</tr>
+<tr class="row-odd"><td>pftype</td>
+<td>PF.RAW or PF.DERIVED</td>
+<td>Tells whether a PF is a RAW PF or DERIVED from other PFs</td>
+</tr>
+<tr class="row-even"><td>logger</td>
+<td>logging.Logger</td>
+<td>message logging system</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Methods</p>
+<dl class="method">
+<dt id="statspy.core.PF.__add__">
+<tt class="descname">__add__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.__add__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.__add__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add two PFs.</p>
+<p>The norm parameters are also summed.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : PF</p>
+<p><strong>other</strong> : PF</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : PF</p>
+<blockquote class="last">
+<div><p>new pf which is the sum of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.__call__">
+<tt class="descname">__call__</tt><big>(</big><em>*args</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.__call__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.__call__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Evaluate Probability Function in x</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>args</strong> : float, ndarray, optional, multiple values for multivariate pfs</p>
+<blockquote>
+<div><p>Random Variable(s) value(s)</p>
+</div></blockquote>
+<p><strong>kwargs</strong> : keywork arguments, optional</p>
+<blockquote>
+<div><p>Shape parameters values</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>value</strong> : float, ndarray</p>
+<blockquote class="last">
+<div><p>Probability Function value(s) in x</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.__mul__">
+<tt class="descname">__mul__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.__mul__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.__mul__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Multiply a PF by another PF.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : PF</p>
+<p><strong>other</strong> : PF</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : PF</p>
+<blockquote class="last">
+<div><p>new PF which is the product of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.__rmul__">
+<tt class="descname">__rmul__</tt><big>(</big><em>scale</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.__rmul__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.__rmul__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Scale PF normalization value</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : PF</p>
+<p><strong>scale</strong> : float</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>self</strong> : PF</p>
+<blockquote class="last">
+<div><p>original PF with self.norm.value <a href="#id3"><span class="problematic" id="id4">*</span></a>= scale</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="statspy.core.PF.__weakref__">
+<tt class="descname">__weakref__</tt><a class="headerlink" href="#statspy.core.PF.__weakref__" title="Permalink to this definition">¶</a></dt>
+<dd><p>list of weak references to the object (if defined)</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.cdf">
+<tt class="descname">cdf</tt><big>(</big><em>*args</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.cdf"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.cdf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the cumulative distribution function in x.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>args</strong> : ndarray, tuple</p>
+<blockquote>
+<div><p>Random Variable(s) value(s)</p>
+</div></blockquote>
+<p><strong>kwargs</strong> : keywork arguments, optional</p>
+<blockquote>
+<div><p>Shape parameters values</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>value</strong> : float, ndarray</p>
+<blockquote class="last">
+<div><p>Cumulative distribution function value(s) in x</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.convolve">
+<tt class="descname">convolve</tt><big>(</big><em>other</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.convolve"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.convolve" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convolve two PFs which is same as adding two random variables.</p>
+<p>The scipy.signal package is used to perform the convolution with
+different options set by mode.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : PF</p>
+<p><strong>other</strong> : PF</p>
+<p><strong>kw</strong> : keywork arguments, dict</p>
+<blockquote>
+<div><p>May be:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>options <span class="classifier-delimiter">:</span> <span class="classifier">str</span></dt>
+<dd><p class="first">Way to perform the convolution. If mode is equal to:</p>
+<ul class="last simple">
+<li><tt class="docutils literal"><span class="pre">fft</span></tt> then <tt class="docutils literal"><span class="pre">scipy.signal.fftconvolve</span></tt> is used</li>
+<li><tt class="docutils literal"><span class="pre">num</span></tt> then <tt class="docutils literal"><span class="pre">scipy.signal.convolve</span></tt> is used</li>
+<li><tt class="docutils literal"><span class="pre">rvs</span></tt> then random variates are used to generate the PF</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : PF</p>
+<blockquote class="last">
+<div><p>new PF which is the convolution of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Notes</p>
+<p>This method is working only for 1-dim pdf/pmf currently.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.corr">
+<tt class="descname">corr</tt><big>(</big><big>)</big><a class="headerlink" href="#statspy.core.PF.corr" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the correlation matrix of the free parameters.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>corr</strong> : ndarray</p>
+<blockquote class="last">
+<div><p>Correlation matrix</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.dF">
+<tt class="descname">dF</tt><big>(</big><em>x</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.dF"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.dF" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the uncertainty on PF given the uncertainty on the shape
+and norm parameters.</p>
+<p>This method can be used to show an error band on your fitted PF.
+To compute the uncertainty on the PF, the error propagation formula is
+used:</p>
+<div class="highlight-python"><pre>dF(x;th) = (F(x;th+dth) - F(x;th-dth))/2
+dF(x)^2 = dF(x;th)^T * corr(th,th') * dF(x;th')</pre>
+</div>
+<p>so keep in mind it is only an approximation.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>x</strong> : float, ndarray</p>
+<blockquote>
+<div><p>Random variable(s) value(s)</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>dF</strong> : float, ndarray</p>
+<blockquote class="last">
+<div><p>Uncertainty on the PF evaluated in x</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.get_list_free_params">
+<tt class="descname">get_list_free_params</tt><big>(</big><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.get_list_free_params"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.get_list_free_params" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the list of free parameters.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.kurtosis">
+<tt class="descname">kurtosis</tt><big>(</big><em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.kurtosis"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.kurtosis" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate the kurtosis of the PF. See PF.mean() for the syntax.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.leastsq_fit">
+<tt class="descname">leastsq_fit</tt><big>(</big><em>xdata</em>, <em>ydata</em>, <em>ey=None</em>, <em>dx=None</em>, <em>cond=None</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.leastsq_fit"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.leastsq_fit" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fit the PF to data using a least squares method.</p>
+<p>The fitting part is performed using the scipy.optimize.leastsq 
+function. The Levenberg-Marquardt algorithm is used by the &#8216;leastsq&#8217;
+method to find the minimum values.
+When calling this method, all PF parameters are minimized except
+the one which are set as &#8216;const&#8217;.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>xdata</strong> : ndarray</p>
+<blockquote>
+<div><p>Values for which ydata are measured and PF must be computed</p>
+</div></blockquote>
+<p><strong>ydata</strong> : ndarray</p>
+<blockquote>
+<div><p>Observed values (like number of events)</p>
+</div></blockquote>
+<p><strong>ey</strong> : ndarray (optional)</p>
+<blockquote>
+<div><p>Standard deviations of ydata. If not specified, it takes
+sqrt(ydata) as standard deviation.</p>
+</div></blockquote>
+<p><strong>dx</strong> : ndarray (optional)</p>
+<blockquote>
+<div><p>Array containing bin-width of xdata. It can be used to normalize
+the PF to the integral while minimizing.</p>
+</div></blockquote>
+<p><strong>cond</strong> : boolean ndarray (optional)</p>
+<blockquote>
+<div><p>Boolean array telling if a bin should be used in the fit or not</p>
+</div></blockquote>
+<p><strong>kw</strong> : keyword arguments</p>
+<blockquote>
+<div><p>Keyword arguments passed to the leastsq method</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>free_params</strong> : statspy.core.Param list</p>
+<blockquote>
+<div><p>List of the free parameters used during the fit. Their &#8216;value&#8217;
+and &#8216;unc&#8217; arguments are extracted from minimization.</p>
+</div></blockquote>
+<p><strong>pcov</strong> : 2d array</p>
+<blockquote>
+<div><p>Estimated covariance matrix of the free parameters.</p>
+</div></blockquote>
+<p><strong>chi2min</strong> : float</p>
+<blockquote>
+<div><p>Least square sum evaluated in popt.</p>
+</div></blockquote>
+<p><strong>pvalue</strong> : float</p>
+<blockquote class="last">
+<div><p>p-value = P(chi2&gt;chi2min,ndf) with P a chi2 distribution and
+ndf the number of degrees of freedom.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.loc">
+<tt class="descname">loc</tt><big>(</big><em>loc</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.loc"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.loc" title="Permalink to this definition">¶</a></dt>
+<dd><p>Derive a PF from another PF via a location parameter.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : PF</p>
+<p><strong>loc</strong> : Param, value</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : PF</p>
+<blockquote class="last">
+<div><p>new PF with x -&gt; x + loc</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.logpf">
+<tt class="descname">logpf</tt><big>(</big><em>*args</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.logpf"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.logpf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the logarithm of the PF in x.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>args</strong> : ndarray, tuple</p>
+<blockquote>
+<div><p>Random Variable(s) value(s)</p>
+</div></blockquote>
+<p><strong>kwargs</strong> : keywork arguments, optional</p>
+<blockquote>
+<div><p>Shape parameters values</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>value</strong> : float, ndarray</p>
+<blockquote class="last">
+<div><p>Logarithm of the Probability Function value(s) in x</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.maxlikelihood_fit">
+<tt class="descname">maxlikelihood_fit</tt><big>(</big><em>data</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.maxlikelihood_fit"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.maxlikelihood_fit" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fit the PF to data using the maximum likelihood estimator method.</p>
+<p>The fitting part is performed using the <tt class="docutils literal"><span class="pre">scipy.optimize.minimize</span></tt> 
+function. If keyword argument <tt class="docutils literal"><span class="pre">method</span></tt> is not specified,
+the BFGS algorithm is used.
+When calling this method, all PF parameters are minimized except
+the one which are set as &#8216;const&#8217; before calling the method.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>data</strong> : ndarray, tuple</p>
+<blockquote>
+<div><p>Data used in the computation of the (log-)likelihood function</p>
+</div></blockquote>
+<p><strong>kw</strong> : keyword arguments (optional)</p>
+<blockquote>
+<div><p>Keyword arguments passed to the scipy.optimize.minimize method.</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>free_params</strong> : statspy.core.Param list</p>
+<blockquote>
+<div><p>List of the free parameters used during the fit. Their &#8216;value&#8217;
+arguments are extracted from the minimization process. If the
+Hessian is provided by the algorithm, the &#8216;unc&#8217; argument is also
+updated.</p>
+</div></blockquote>
+<p><strong>nllfmin</strong> : float</p>
+<blockquote class="last">
+<div><p>Minimal value of the negative log-likelihood function</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.mean">
+<tt class="descname">mean</tt><big>(</big><em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.mean"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.mean" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate the mean of the PF.</p>
+<div class="admonition warning">
+<p class="first admonition-title">Warning</p>
+<ul class="last simple">
+<li>In the case of a RAW PF from <tt class="docutils literal"><span class="pre">scipy.stats</span></tt>, it calls the <tt class="docutils literal"><span class="pre">stats</span></tt> 
+method and therefore returns the expected value.</li>
+<li>In the case of a DERIVED PF, it returns an estimate derived from 
+random variates and using the <tt class="docutils literal"><span class="pre">numpy.mean</span></tt> function.</li>
+</ul>
+</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>kw</strong> : keywork arguments, optional</p>
+<blockquote>
+<div><p>Shape parameters values</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first last"><strong>mean</strong> : ndarray</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.nllf">
+<tt class="descname">nllf</tt><big>(</big><em>data</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.nllf"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.nllf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Evaluate the negative log-likelihood function:</p>
+<div class="highlight-python"><pre>nllf = -sum_i(log(pf(x_i;params)))</pre>
+</div>
+<p><tt class="docutils literal"><span class="pre">sum</span></tt> runs over the x-variates defined in data array.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>data</strong> : ndarray, tuple</p>
+<blockquote>
+<div><p>x - variates used in the computation of the likelihood</p>
+</div></blockquote>
+<p><strong>kw</strong> : keyword arguments (optional)</p>
+<blockquote>
+<div><p>Specify any Parameter name of the considered PF</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>nllf</strong> : float</p>
+<blockquote class="last">
+<div><p>Negative log-likelihood function</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.pllr">
+<tt class="descname">pllr</tt><big>(</big><em>data</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.pllr"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.pllr" title="Permalink to this definition">¶</a></dt>
+<dd><p>Evaluate the profile log-likelihood ratio ( * -2 )</p>
+<p>The profile likelihood ratio is defined by:</p>
+<div class="highlight-python"><pre>l = L(x|theta_r,\hat{\hat{theta_s}}) / L(x|\hat{theta_r},\hat{theta_s})</pre>
+</div>
+<p>The profile log-likelihood ratio is then:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">q</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">log</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Where</p>
+<ul class="simple">
+<li>L is the Likelihood function (computed via data)</li>
+<li>theta_r is the list of parameters of interest (Param.poi = True)</li>
+<li>theta_s is the list of nuisance parameters</li>
+<li>hat or double hat refers to the unconditional and conditional
+maximum likelilood estimates of the parameters respectively.</li>
+</ul>
+<p>pllr is used as a test statistics for problems with numerous 
+nuisance parameters. Asymptotically, the pllr PF is described by a
+chi2 distribution (Wilks theorem).
+Further information on the likelihood ratio can be found in Chapter 
+22 of &#8220;Kendall&#8217;s Advanced Theory of Statistics, Volume 2A&#8221;.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>data</strong> : ndarray, tuple</p>
+<blockquote>
+<div><p>x - variates used in the computation of the likelihood</p>
+</div></blockquote>
+<p><strong>kw</strong> : keyword arguments (optional)</p>
+<blockquote>
+<div><p>Specify any Parameter of interest name of the considered PF,
+or any option used by the method maxlikelihood_fit.</p>
+<dl class="docutils">
+<dt>uncond_nllf <span class="classifier-delimiter">:</span> <span class="classifier">float</span></dt>
+<dd><p class="first last">unconditional minimal negative log-likelihood function value</p>
+</dd>
+</dl>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>pllr</strong> : float</p>
+<blockquote class="last">
+<div><p>Profile log-likelihood ratio times -2</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.rv_names">
+<tt class="descname">rv_names</tt><big>(</big><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.rv_names"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.rv_names" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return a list of RV names.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.rvadd">
+<tt class="descname">rvadd</tt><big>(</big><em>other</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.rvadd"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.rvadd" title="Permalink to this definition">¶</a></dt>
+<dd><p>Operation equivalent to adding two random variables.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.rvdiv">
+<tt class="descname">rvdiv</tt><big>(</big><em>other</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.rvdiv"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.rvdiv" title="Permalink to this definition">¶</a></dt>
+<dd><p>Operation equivalent to dividing two random variables.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.rvmul">
+<tt class="descname">rvmul</tt><big>(</big><em>other</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.rvmul"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.rvmul" title="Permalink to this definition">¶</a></dt>
+<dd><p>Operation equivalent to multiplying two random variables.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.rvs">
+<tt class="descname">rvs</tt><big>(</big><em>**kwargs</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.rvs"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.rvs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get random variates from a PF</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>data</strong> : ndarray</p>
+<blockquote class="last">
+<div><p>Array of random variates</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Examples</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">statspy</span> <span class="kn">as</span> <span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pdf_x</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">PF</span><span class="p">(</span><span class="s">&quot;pdf_x=norm(x;mu=20,sigma=5)&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">pdf_x</span><span class="o">.</span><span class="n">rvs</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.rvsub">
+<tt class="descname">rvsub</tt><big>(</big><em>other</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.rvsub"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.rvsub" title="Permalink to this definition">¶</a></dt>
+<dd><p>Operation equivalent to subtracting two random variables.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.scale">
+<tt class="descname">scale</tt><big>(</big><em>scale</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.scale"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.scale" title="Permalink to this definition">¶</a></dt>
+<dd><p>Derive a PF from another PF via a scale parameter.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : PF</p>
+<p><strong>scale</strong> : Param, value</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : PF</p>
+<blockquote class="last">
+<div><p>new PF with x -&gt; x * scale</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.sf">
+<tt class="descname">sf</tt><big>(</big><em>*args</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.sf"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.sf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the survival function (1 - cdf) in x.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>args</strong> : ndarray, tuple</p>
+<blockquote>
+<div><p>Random Variable(s) value(s)</p>
+</div></blockquote>
+<p><strong>kwargs</strong> : keywork arguments, optional</p>
+<blockquote>
+<div><p>Shape parameters values</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>value</strong> : float, ndarray</p>
+<blockquote class="last">
+<div><p>Survival function value(s) in x</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.skew">
+<tt class="descname">skew</tt><big>(</big><em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.skew"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.skew" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate the skewness of the PF. See PF.mean() for the syntax.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.std">
+<tt class="descname">std</tt><big>(</big><em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.std"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.std" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate the standard deviation of the PF.
+See PF.mean() for the syntax.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.PF.var">
+<tt class="descname">var</tt><big>(</big><em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#PF.var"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.PF.var" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate the variance of the PF. See PF.mean() for the syntax.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="random-variable">
+<h2><a class="toc-backref" href="#id8">Random Variable</a><a class="headerlink" href="#random-variable" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="statspy.core.RV">
+<em class="property">class </em><tt class="descclassname">statspy.core.</tt><tt class="descname">RV</tt><big>(</big><em>*args</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#RV"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.RV" title="Permalink to this definition">¶</a></dt>
+<dd><p>Base class to define a Random Variable.</p>
+<p class="rubric">Examples</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">statspy</span> <span class="kn">as</span> <span class="nn">sp</span> 
+<span class="gp">&gt;&gt;&gt; </span><span class="n">X</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">RV</span><span class="p">(</span><span class="s">&quot;norm(x|mu=10,sigma=2)&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p class="rubric">Attributes</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="6%" />
+<col width="30%" />
+<col width="63%" />
+</colgroup>
+<tbody valign="top">
+<tr class="row-odd"><td>name</td>
+<td>str</td>
+<td>Random Variable name</td>
+</tr>
+<tr class="row-even"><td>pf</td>
+<td>statspy.core.PF</td>
+<td>Probability Function object associated to a Random Variable</td>
+</tr>
+<tr class="row-odd"><td>rvtype</td>
+<td>RV.CONTINUOUS or RV.DISCRETE</td>
+<td>Random Variable type</td>
+</tr>
+<tr class="row-even"><td>logger</td>
+<td>logging.Logger</td>
+<td>message logging system</td>
+</tr>
+</tbody>
+</table>
+<dl class="method">
+<dt id="statspy.core.RV.__add__">
+<tt class="descname">__add__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#RV.__add__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.RV.__add__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add two random variables or a random variable by a parameter.</p>
+<p>The associated PF of the sum of the two random variables is
+a convolution of the two PFs.
+Caveat: this method assumes <em>independent</em> random variables.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : RV</p>
+<p><strong>other</strong> : RV, Param, value</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : RV</p>
+<blockquote class="last">
+<div><p>new RV which is the sum of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.RV.__call__">
+<tt class="descname">__call__</tt><big>(</big><em>**kwargs</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#RV.__call__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.RV.__call__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get random variates</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>data</strong> : ndarray</p>
+<blockquote class="last">
+<div><p>Array of random variates</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Examples</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">statspy</span> <span class="kn">as</span> <span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">X</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">RV</span><span class="p">(</span><span class="s">&quot;norm(x;mu=20,sigma=5)&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">X</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.RV.__div__">
+<tt class="descname">__div__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#RV.__div__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.RV.__div__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Divide two random variables or a random variable by a parameter.</p>
+<p>Caveat: this method assumes <em>independent</em> random variables.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : RV</p>
+<p><strong>other</strong> : RV, Param, value</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : RV</p>
+<blockquote class="last">
+<div><p>new RV which is the ratio of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.RV.__mul__">
+<tt class="descname">__mul__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#RV.__mul__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.RV.__mul__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Multiply two random variables or a random variable by a parameter.</p>
+<p>Caveat: this method assumes <em>independent</em> random variables.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : RV</p>
+<p><strong>other</strong> : RV, Param, value</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : RV</p>
+<blockquote class="last">
+<div><p>new RV which is the product of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.RV.__radd__">
+<tt class="descname">__radd__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#RV.__radd__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.RV.__radd__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add a random variable and a parameter.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : RV</p>
+<p><strong>other</strong> : Param, value</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : RV</p>
+<blockquote class="last">
+<div><p>new RV which is the sum of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.RV.__rmul__">
+<tt class="descname">__rmul__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#RV.__rmul__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.RV.__rmul__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Multiply a parameter by a random variable.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : RV</p>
+<p><strong>other</strong> : Param, value</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : RV</p>
+<blockquote class="last">
+<div><p>new RV which is the product of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="statspy.core.RV.__sub__">
+<tt class="descname">__sub__</tt><big>(</big><em>other</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#RV.__sub__"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.RV.__sub__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Subtract two random variables or a random variable by a parameter.</p>
+<p>Caveat: this method assumes <em>independent</em> random variables.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>self</strong> : RV</p>
+<p><strong>other</strong> : RV, Param, value</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : RV</p>
+<blockquote class="last">
+<div><p>new RV which is the difference of self and other</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="statspy.core.RV.__weakref__">
+<tt class="descname">__weakref__</tt><a class="headerlink" href="#statspy.core.RV.__weakref__" title="Permalink to this definition">¶</a></dt>
+<dd><p>list of weak references to the object (if defined)</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-statspy.interval">
+<span id="interval-estimation"></span><h2><a class="toc-backref" href="#id9">Interval estimation</a><a class="headerlink" href="#module-statspy.interval" title="Permalink to this headline">¶</a></h2>
+<p>module interval.py</p>
+<p>This module contains functions to estimate confidence or credible intervals.</p>
+<dl class="function">
+<dt id="statspy.interval.pllr">
+<tt class="descclassname">statspy.interval.</tt><tt class="descname">pllr</tt><big>(</big><em>pf</em>, <em>data</em>, <em>**kw</em><big>)</big><a class="reference internal" href="_modules/statspy/interval.html#pllr"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.interval.pllr" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute confidence intervals using a profile likelihood ratio method.</p>
+<p>Interval estimation is done through steps:</p>
+<ul>
+<li><p class="first">The (minus log-)likelihood is computed from <tt class="docutils literal"><span class="pre">pf</span></tt> and <tt class="docutils literal"><span class="pre">data</span></tt> via the
+<tt class="docutils literal"><span class="pre">PF.nllf</span></tt> method.</p>
+</li>
+<li><p class="first">Best estimates hat{theta_i} for each parameter theta_i are computed with
+the <tt class="docutils literal"><span class="pre">PF.maxlikelihood_fit</span></tt> method.</p>
+</li>
+<li><p class="first">The confidence interval of theta_i around its best estimate is computed
+from a profile log-likelihood ratio function q defined as:</p>
+<div class="highlight-python"><pre>l = L(x|theta_i,\hat{\hat{theta_s}}) / L(x|\hat{theta_i},\hat{theta_s})
+q(theta_i) = -2 * log(l)</pre>
+</div>
+<p>where L is the likelihood function and theta_s are the nuisance 
+parameters.</p>
+</li>
+<li><p class="first">q(theta_i) is assumed to be described as a chi2 distribution (Wilks&#8217;
+theorem). Bounds corresponding to a given confidence level (CL) are found
+by searching values for which q(theta_i) is equal to the chi2 quantile of 
+CL:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">quantile</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">chi2</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">cl</span><span class="p">,</span> <span class="n">ndf</span><span class="p">)</span>
+</pre></div>
+</div>
+</li>
+</ul>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>pf</strong> : statspy.core.PF</p>
+<blockquote>
+<div><p>Probability function used in the computed of the likelihood</p>
+</div></blockquote>
+<p><strong>data</strong> : ndarray, tuple</p>
+<blockquote>
+<div><p>x - variates used in the computation of the likelihood</p>
+</div></blockquote>
+<p><strong>kw</strong> : keyword arguments (optional)</p>
+<blockquote>
+<div><p>Possible keyword arguments are:</p>
+<dl class="docutils">
+<dt>cl <span class="classifier-delimiter">:</span> <span class="classifier">float</span></dt>
+<dd><p class="first last">Confidence level (0.6827 by default)</p>
+</dd>
+<dt>ndf <span class="classifier-delimiter">:</span> <span class="classifier">int</span></dt>
+<dd><p class="first last">Number of degrees of freedom (1 by default)</p>
+</dd>
+<dt>root_finder <span class="classifier-delimiter">:</span> <span class="classifier">scipy.optimize function</span></dt>
+<dd><p class="first last">Root finder algorithm (scipy.optimize.brentq by default)</p>
+</dd>
+</dl>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>params</strong> : statspy.core.Param list</p>
+<blockquote>
+<div><p>List of the parameters for which a confidence interval has been
+extracted including updated &#8216;value&#8217;, &#8216;neg_unc&#8217; and &#8216;pos_unc&#8217; arguments.</p>
+</div></blockquote>
+<p><strong>corr</strong> : ndarray</p>
+<blockquote>
+<div><p>Correlation matrix</p>
+</div></blockquote>
+<p><strong>quantile</strong> : float</p>
+<blockquote class="last">
+<div><p>Quantile used in the computation of bounds</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+<div class="section" id="miscellaneous-functions">
+<h2><a class="toc-backref" href="#id10">Miscellaneous functions</a><a class="headerlink" href="#miscellaneous-functions" title="Permalink to this headline">¶</a></h2>
+<dl class="function">
+<dt id="statspy.core.get_obj">
+<tt class="descclassname">statspy.core.</tt><tt class="descname">get_obj</tt><big>(</big><em>obj_name</em><big>)</big><a class="reference internal" href="_modules/statspy/core.html#get_obj"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#statspy.core.get_obj" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a Param, PF or RV object.</p>
+<p>Look in the different dictionaries if an object named obj_name exists
+and returns it.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters :</th><td class="field-body"><p class="first"><strong>obj_name</strong> : str</p>
+<blockquote>
+<div><p>Object name used to define a Param, PF or RV</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns :</th><td class="field-body"><p class="first"><strong>new</strong> : Param, PF, RV</p>
+<blockquote class="last">
+<div><p>Object if found in the dictionaries</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Examples</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">statspy</span> <span class="kn">as</span> <span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mypmf</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">PF</span><span class="p">(</span><span class="s">&#39;mypmf=poisson(n;lbda=5)&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lbda</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">get_obj</span><span class="p">(</span><span class="s">&#39;lbda&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lbda</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\\</span><span class="s">lambda&#39;</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">StatsPy Reference Guide</a><ul>
+<li><a class="reference internal" href="#parameter">Parameter</a></li>
+<li><a class="reference internal" href="#probability-function">Probability Function</a></li>
+<li><a class="reference internal" href="#random-variable">Random Variable</a></li>
+<li><a class="reference internal" href="#module-statspy.interval">Interval estimation</a></li>
+<li><a class="reference internal" href="#miscellaneous-functions">Miscellaneous functions</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="MANUAL.html"
+                        title="previous chapter">StatsPy Users Guide</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/Reference.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="np-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="MANUAL.html" title="StatsPy Users Guide"
+             >previous</a> |</li>
+        <li><a href="index.html">StatsPy 0.1.0a1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, StatsPy Development Team.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2b1.
+    </div>
+  </body>
+</html>
