@@ -9,9 +9,11 @@ import math
 import scipy.optimize
 import scipy.stats
 
+__all__ =['pllr']
+
 # Logging system
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 _ch = logging.StreamHandler() # Console handler
 _formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 _ch.setFormatter(_formatter)
@@ -37,15 +39,15 @@ def pllr(pf, data, **kw):
       parameters.
     * q(theta_i) is assumed to be described as a chi2 distribution (Wilks'
       theorem). Bounds corresponding to a given confidence level (CL) are found
-      by searching values for which q(theta_i) is equal to the chi2 quantile of 
-      CL::
+      by searching values for which q(theta_i) is equal to the chi2 quantile 
+      of CL::
 
         quantile = scipy.stats.chi2.ppf(cl, ndf)
 
     Parameters
     ----------
     pf : statspy.core.PF
-        Probability function used in the computed of the likelihood
+        Probability function used in the computation of the likelihood
     data : ndarray, tuple
         x - variates used in the computation of the likelihood 
     kw : keyword arguments (optional)
@@ -80,12 +82,10 @@ def pllr(pf, data, **kw):
     root_finder = kw.get('root_finder', scipy.optimize.brentq)
 
     # Maximum likelihood estimates
-    params, nllfmin = pf.maxlikelihood_fit(data)
-    print pf._pcov
+    params, nllfmin = pf.maxlikelihood_fit(data, method='BFGS')
     popt = []
     [ popt.append([par.value, par.unc]) for par in params ]
     corr = pf.corr()
-    print popt,corr
 
     # Loop over parameters
     maxiter = kw.get('maxiter', 20)
@@ -100,9 +100,11 @@ def pllr(pf, data, **kw):
         logger.debug('%s quadratic uncertainty = %f' % (par.name, par.unc))
         # upper bound
         iter = 0
-        range = [popt[ipar][0], popt[ipar][0] + math.sqrt(quantile) * popt[ipar][1]]
+        range = [popt[ipar][0], 
+                 popt[ipar][0] + math.sqrt(quantile) * popt[ipar][1]]
         par.value = range[1]
-        while (pf.pllr(data, uncond_nllf=nllfmin) < quantile and iter < maxiter):
+        while (pf.pllr(data, uncond_nllf=nllfmin) < quantile and 
+               iter < maxiter):
             range[1] = range[1] + math.sqrt(quantile) * popt[ipar][1]
             par.value = range[1]
             iter += 1
@@ -113,7 +115,8 @@ def pllr(pf, data, **kw):
         logger.debug('%s upper bound = %f' % (par.name, upper_bound))
         # lower bound
         iter = 0
-        range = [popt[ipar][0] - math.sqrt(quantile) * popt[ipar][1], popt[ipar][0]]
+        range = [popt[ipar][0] - math.sqrt(quantile) * popt[ipar][1],
+                 popt[ipar][0]]
         par.value = range[0]
         while (pf.pllr(data, uncond_nllf=nllfmin) < quantile and iter < maxiter):
             range[0] = range[0] - math.sqrt(quantile) * popt[ipar][1]

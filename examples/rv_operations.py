@@ -40,7 +40,7 @@ ax_sub.plot(z2, X.pf(z2), label='X')
 ax_sub.plot(z2, Y.pf(z2), label='Y')
 ax_sub.plot(z2, Z2.pf(z2), label='X-Y')
 handles, labels = ax_sub.get_legend_handles_labels()
-ax_sub.legend(handles[::-1], labels[::-1], loc='left')
+ax_sub.legend(handles[::-1], labels[::-1], loc='upper left')
 
 # Multiplication
 X3 = sp.RV("norm(x3;mux3=2.0,sigmax3=0.3)")

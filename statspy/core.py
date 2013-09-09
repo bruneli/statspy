@@ -17,7 +17,7 @@ import scipy.optimize
 import scipy.signal
 import scipy.stats
 
-__all__ = ['Param','PF','RV','get_obj']
+__all__ = ['Param','PF','RV','get_obj','exp','log','sqrt']
 
 _dparams = {}  # Dictionary hosting the list of parameters
 _dpfs    = {}  # Dictionary hosting the list of probability functions
@@ -25,7 +25,7 @@ _drvs    = {}  # Dictionary hosting the list of random variables
 
 # Logging system
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 _ch = logging.StreamHandler() # Console handler
 _formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 _ch.setFormatter(_formatter)
@@ -106,11 +106,6 @@ class Param(object):
 
     # Define the different parameter types
     (RAW,DERIVED) = (0,10)
-
-    # Define derivatives for main operators
-    _derivative_add_sub = [lambda x,y : 1, lambda x,y : 1]
-    _derivative_mul = [lambda x,y : y, lambda x,y : x]
-    _derivative_div = [lambda x,y : 1/y, lambda x,y : x/y/y]
 
     def __init__(self, *args, **kwargs):
         # Public class members
@@ -617,8 +612,8 @@ class Param(object):
     def _register_in_db(self, name):
         """Register a parameter in database."""
         if name in _dparams and 'obj' in _dparams[name]:
-            self.logger.warning('%s already registred, remove existing info',
-                                name)
+            self.logger.info('%s already registred, remove existing info',
+                             name)
         _dparams[name] = {'rvs':[],'pfs':[],'params':[]}
         _dparams[name]['obj'] = self
         self.logger.debug('Register new Param: %s with value=%f, bounds=%s',
@@ -662,6 +657,14 @@ class Param(object):
             strform = par.name
         elif par.strform != None:
             strform = par.strform
+        return strform
+
+    @staticmethod
+    def _build_math_formula(op, par):
+        strform = None
+        par_strform = Param._get_strform(par)
+        if par_strform != None:
+            strform = '%s(%s)' % (op, par_strform)
         return strform
 
     @staticmethod
@@ -1350,11 +1353,12 @@ class PF(object):
         for ipar,par in enumerate(self._free_params):
              p0[ipar] = par.unbound_repr()
         # Call the minimizer (BFGS method by default)
-        kwargs = {}
-        for name in ['method', 'jac', 'hess', 'hessp', 'bounds', 'constraints',
-                     'tol', 'callback', 'options']:
+        kwargs = {'method':'Nelder-Mead'}
+        for name in ['method', 'jac', 'hess', 'hessp', 'bounds',
+                     'constraints', 'tol', 'callback', 'options']:
             if name in kw: kwargs[name] = kw[name]
-        result = scipy.optimize.minimize(self._nllf, p0, args=(data, ), **kwargs)
+        result = scipy.optimize.minimize(self._nllf, p0, 
+                                         args=(data, ), **kwargs)
         # Manage results
         if hasattr(result, 'hess'):
             self._pcov = result.hess # which is in fact the inverse hessian
@@ -1363,7 +1367,7 @@ class PF(object):
         for ipar,par in enumerate(self._free_params):
             val = result.x[ipar]
             unc = 0.
-            if (self._pcov)[ipar][ipar] >= 0.:
+            if self._pcov != None and (self._pcov)[ipar][ipar] >= 0.:
                 unc = math.sqrt((self._pcov)[ipar][ipar])
             val2, unc2 = par.unbound_to_bound(val, unc)
             par._pcov = []
@@ -1495,6 +1499,40 @@ class PF(object):
         # Evaluate the pllr
         pllr = 2. * (cond_nllf - uncond_nllf)
         return pllr
+
+    def pvalue(self, *args, **kwargs):
+        """Compute the pvalue in xobs.
+
+        The p-value is the probability of observing at least xobs 
+        Pr(x >= xobs).
+
+        Parameters
+        ----------
+        args : ndarray, tuple
+            Random Variable(s) value(s)
+        kwargs : keywork arguments, optional
+            Shape parameters values
+
+        Returns
+        -------
+        pvalue : float, ndarray
+            p-value(s) in x
+
+        """
+        try:
+            pvalue = self.sf(*args, **kwargs)
+            # Since p-value is probability of observing at least xobs,
+            # add the probability in xobs when discrete.
+            all_discrete = True
+            for rv in self._rvs:
+                if rv[3] == RV.DISCRETE: continue
+                all_discrete = False
+                break
+            if all_discrete:
+                pvalue = pvalue + self(*args, **kwargs)
+        except:
+            raise
+        return pvalue
 
     def rvadd(self, other, **kw):
         """Operation equivalent to adding two random variables."""
@@ -1957,8 +1995,6 @@ class PF(object):
         if self.pftype == PF.RAW and len(rv_values) != len(self._rvs):
             raise SyntaxError('Provide %s input arguments for rvs' % 
                               len(self._rvs))
-        if type(rv_values[0]) == float:
-            self.logger.debug('rv values=%s', rv_values)
         if self._loc != None and len(rv_values) == 1:
             rv_values[0] = rv_values[0] - self._loc.value
         if (self._scale != None and len(rv_values) == 1 and 
@@ -2353,6 +2389,36 @@ def check_method_exists(obj=None, name=""):
         raise StandardError('No %s() method found.' % name)
     return True
 
+def exp(x):
+    """Compute the exponential of a Parameter.
+
+        Parameters
+        ----------
+        x : Param
+            Input parameter
+    
+        Returns
+        -------
+        y : Param
+            Exponential of x
+    
+        Examples
+        --------
+        >>> import statspy as sp
+        >>> x = sp.Param("x = 4 +- 1")
+        >>> y = sp.exp(x)
+    """
+    try:
+        if isinstance(x, Param):
+            y = Param(formula=[[math.exp, x]],
+                      derivative=lambda z : math.exp(z),
+                      strform=Param._build_math_formula('exp', x))
+        else:
+            raise SyntaxError('exp function only applies to Parameters.')
+    except:
+        raise
+    return y
+
 def get_obj(obj_name):
     """Returns a Param, PF or RV object.
 
@@ -2385,6 +2451,66 @@ def get_obj(obj_name):
         logger.debug('%s has been found in %s' % (obj_name, obj_dict.keys()))
         obj = obj_dict[obj_name]['obj']
     return obj
+
+def log(x):
+    """Compute the logarithm of a Parameter.
+
+        Parameters
+        ----------
+        x : Param
+            Input parameter
+    
+        Returns
+        -------
+        y : Param
+            Logarithm of x
+    
+        Examples
+        --------
+        >>> import statspy as sp
+        >>> x = sp.Param("x = 4 +- 1")
+        >>> y = sp.log(x)
+    """
+    try:
+        if isinstance(x, Param):
+            y = Param(formula=[[math.log, x]],
+                      derivative=lambda z : 1./z,
+                      strform=Param._build_math_formula('log', x))
+        else:
+            raise SyntaxError('log function only applies to Parameters.')
+    except:
+        raise
+    return y
+
+def sqrt(x):
+    """Compute the square root of a Parameter.
+
+        Parameters
+        ----------
+        x : Param
+            Input parameter
+    
+        Returns
+        -------
+        y : Param
+            Square root of x
+    
+        Examples
+        --------
+        >>> import statspy as sp
+        >>> x = sp.Param("x = 4 +- 1")
+        >>> y = sp.sqrt(x)
+    """
+    try:
+        if isinstance(x, Param):
+            y = Param(formula=[[math.sqrt, x]],
+                      derivative=lambda z : 1./2./math.sqrt(z),
+                      strform=Param._build_math_formula('sqrt', x))
+        else:
+            raise SyntaxError('sqrt function only applies to Parameters.')
+    except:
+        raise
+    return y
 
 def update_status(obj_dict):
     """Check the list of objects depending on this parameter and update

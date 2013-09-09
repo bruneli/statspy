@@ -41,16 +41,17 @@ TODO
 ----
 
    * *PF*:
-      * Multivariate PFs
-      * Max likelihood fit
+     * Multivariate PFs
+     * Improve bounds for rv operations
    * *Param*:
-      * Uncertainty propagation
+     * For bayesian stats, add prior (posterior) 
+     * Add missing math functions (fabs, trigonometric, hyperbolic)
    * *RV*:
-      * Multiplication/Division/Power
+     * Operations: multiplication, division, power, exp, log
    * *Hypothesis tests*:
-      * PLLR test
+     * Improve handling of hypothesis
+     * Bayesian/Frequentist Hybrid
+     * Bayesian tests
    * *Confidence intervals*:
-      * PLLR-based intervals (MINOS)
-      * Neyman constructions
-      * Bayesian credibility intervals
-      * Bayesian/Frequentist Hybrid
+     * Neyman constructions
+     * Bayesian credibility intervals
