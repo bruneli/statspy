@@ -55,7 +55,7 @@ def pvalue_to_Zvalue(pvalue, mode='two-sided'):
 
     Definition::
 
-        >>> math.sqrt(2.) * scipy.special.erfcinv(mode * pvalue)
+        math.sqrt(2.) * scipy.special.erfcinv(mode * pvalue)
 
     mode is equal to 2 for a two-sided Z-value and to 1 for a one-sided
     Z-value.
@@ -85,11 +85,11 @@ def pvalue_to_Zvalue(pvalue, mode='two-sided'):
     return Zvalue
 
 def Zvalue_to_pvalue(Zvalue, mode='two-sided'):
-    """Convert a two-sided Z-value to a p-value.
+    """Convert a Z-value to a p-value.
 
     Definition::
 
-        >>> scipy.special.erfc(Zvalue / math.sqrt(2.)) / mode
+        scipy.special.erfc(Zvalue / math.sqrt(2.)) / mode
 
     mode is equal to 2 for a two-sided Z-value and to 1 for a one-sided
     Z-value.

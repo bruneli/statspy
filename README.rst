@@ -16,7 +16,7 @@ Links
 Install
 =======
 
-After downloading/checking out files, to install you should run the ``setup.py`` script:
+After downloading/checking out files, to install you should run the ``setup.py`` script::
 
     python setup.py install
 
@@ -41,17 +41,17 @@ TODO
 ----
 
    * *PF*:
-     * Multivariate PFs
-     * Improve bounds for rv operations
+       * Multivariate PFs
+       * Improve bounds for rv operations
    * *Param*:
-     * For bayesian stats, add prior (posterior) 
-     * Add missing math functions (fabs, trigonometric, hyperbolic)
+       * For bayesian stats, add prior (posterior) 
+       * Add missing math functions (fabs, trigonometric, hyperbolic)
    * *RV*:
-     * Operations: multiplication, division, power, exp, log
+       * Operations: multiplication, division, power, exp, log
    * *Hypothesis tests*:
-     * Improve handling of hypothesis
-     * Bayesian/Frequentist Hybrid
-     * Bayesian tests
+       * Improve handling of hypothesis
+       * Bayesian/Frequentist Hybrid
+       * Bayesian tests
    * *Confidence intervals*:
-     * Neyman constructions
-     * Bayesian credibility intervals
+       * Neyman constructions
+       * Bayesian credibility intervals

@@ -178,7 +178,7 @@ signal on top of an exponentially falling background, a least-square fit would
 be done like:
 
 .. literalinclude:: ../../examples/leastsq_fit.py
-   :lines: 33-34,41,44,50-51
+   :lines: 33-34,41,44,49-50
 
 .. figure:: images/leastsq_fit.png
 
@@ -258,12 +258,12 @@ conveniently compute both type of intervals.
           is to add another method (Neyman construction) and a Bayesian
           method
 
-* The profile likelihood ratio method is an approximate frequentist approach
-  relying on the profile likelihood ratio statistics and the Wilks' theorem
-  to build confidence intervals. Its main advantage with respect to other
-  frequentist methods like the Neyman constructions is its speed and the
-  possibility to apply it also in problems with a large number of (nuisance)
-  parameters.
+* The **profile (log-)likelihood ratio (PLLR)** method is an approximate 
+  frequentist approach relying on the profile likelihood ratio test statistics
+  and the Wilks' theorem to build confidence intervals. 
+  Its main advantage with respect to other frequentist methods like the Neyman
+  construction is its speed and the possibility to apply it also in problems 
+  with a large number of (nuisance) parameters.
   To get an approximate confidence interval on a parameter 
   :math:`\theta_i`, the algorithm consists in:
 
@@ -279,7 +279,7 @@ conveniently compute both type of intervals.
 
     where :math:`L(x|\theta_i,\hat{\hat{\theta}}_s)` and 
     :math:`L(x|\hat{\theta}_i,\hat{\theta}_s)` are the conditional and
-    unconditional likelihood functions respectively.
+    unconditional maximum of the likelihood function respectively.
   * Search for values of :math:`q(\theta_i)` equaling quantile defined as::
 
       quantile = scipy.stats.chi2.ppf(cl, ndf)
@@ -293,3 +293,49 @@ conveniently compute both type of intervals.
 Hypothesis tests
 ^^^^^^^^^^^^^^^^
 
+As for interval estimation, the module ``statspy.hypotest`` provides methods
+to perform hypothesis tests.
+
+* Quoting "Kendall's Advanced Theory of Statistics", the **likelihood ratio
+  method** has played a role in the theory of tests analogous to that of the
+  maximum likelihood method in the theory of estimation. Generally, one wish 
+  to test the null hypothesis
+
+  .. math::
+
+      H_{0} : \theta_{r} = \theta_{r0}
+
+  against the alternative hypothesis
+
+  .. math::
+
+      H_{1} : \theta_{r} \neq \theta_{r0}
+
+  taking into accound a number of nuisance parameters :math:`\theta_s`.
+  As for the likelihood ratio method used for interval estimation, one 
+  defines the log-likehood ratio test statistics as
+
+  .. math::
+
+      \Lambda(\theta_{r0}) = \frac{L(x|\theta_{r0},\hat{\hat{\theta}}_s)}{L(x|\hat{\theta}_r,\hat{\theta}_s)}
+
+  .. math::
+
+      q(\theta_{r0}) = -2 log(\Lambda(\theta_{r0}))
+
+  with :math:`L(x|\theta_{r0},\hat{\hat{\theta}}_s)` and 
+  :math:`L(x|\hat{\theta}_r,\hat{\theta}_s)` the conditional and
+  unconditional maximum of the likelihood function respectively.
+  Asymptotically :math:`q(\theta_{r0})` is distributed as a chi2 function
+  from which p-value or Z-value can be computed.
+  If the p-value is lower than a predefined type I error rate, then the
+  null hypothesis is rejected.
+
+  **Example 3 (Con't)**: considering again the on/off problem, to perform
+  a likelihood ratio test on the background only hypothesis (``mu=0``),
+  one would do::
+
+      >>> data = (4, 5) # n_on, n_off
+      >>> import statspy.hypotest
+      >>> result = statspy.hypotest.pllr(likelihood, data)
+      >>> print 'p-value',result.pvalue,'Z-score',result.Zvalue
