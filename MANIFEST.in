@@ -1,0 +1,8 @@
+include MANIFEST.in LICENSE
+include README.rst
+# Add documentation and examples: we don't use add_data_dir since we do not
+# want to include this at installation, only for sdist-generated tarballs
+recursive-include examples *.py
+include doc/Makefile doc/make.bat
+include doc/source/conf.py
+recursive-include doc/source *.rst

@@ -27,7 +27,6 @@ def configuration(parent_package='', top_path=None):
                        quiet=True)
     config.add_subpackage('statspy')
     config.add_data_dir('statspy/tests')
-    config.add_data_files('README.rst')
     return config
 
 def setup_package():
@@ -50,7 +49,7 @@ def setup_package():
                                  'Programming Language :: Python :: 2.6',
                                  'Programming Language :: Python :: 2.7',
                                  'Programming Language :: Python :: 3',
-                                 'Programming Language :: Python :: 3.3',
+                                 'Programming Language :: Python :: 3.2',
                                  ])
     if (len(sys.argv) >= 2
         and ('--help' in sys.argv[1:] or sys.argv[1]
