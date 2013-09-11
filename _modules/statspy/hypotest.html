@@ -1,0 +1,269 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statspy.hypotest &mdash; StatsPy 0.1.0a1 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.1.0a1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="StatsPy 0.1.0a1 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="../../np-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">StatsPy 0.1.0a1 documentation</a> &raquo;</li>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for statspy.hypotest</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot;module hypotest.py</span>
+
+<span class="sd">This module contains functions to perform hypothesis tests.</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">import</span> <span class="nn">scipy.special</span>
+<span class="kn">import</span> <span class="nn">scipy.stats</span>
+<span class="kn">import</span> <span class="nn">statspy</span> <span class="kn">as</span> <span class="nn">sp</span>
+
+<span class="n">__all__</span> <span class="o">=</span><span class="p">[</span><span class="s">&#39;Result&#39;</span><span class="p">,</span><span class="s">&#39;pvalue_to_Zvalue&#39;</span><span class="p">,</span><span class="s">&#39;Zvalue_to_pvalue&#39;</span><span class="p">,</span><span class="s">&#39;pllr&#39;</span><span class="p">]</span>
+
+<span class="c"># Logging system</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">__name__</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">WARNING</span><span class="p">)</span>
+<span class="n">_ch</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">StreamHandler</span><span class="p">()</span> <span class="c"># Console handler</span>
+<span class="n">_formatter</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">Formatter</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%(asctime)s</span><span class="s"> - </span><span class="si">%(name)s</span><span class="s"> - </span><span class="si">%(levelname)s</span><span class="s"> - </span><span class="si">%(message)s</span><span class="s">&#39;</span><span class="p">)</span>
+<span class="n">_ch</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">_formatter</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="n">_ch</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;logger has been set to DEBUG mode&#39;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Result"><a class="viewcode-back" href="../../Reference.html#statspy.hypotest.Result">[docs]</a><span class="k">class</span> <span class="nc">Result</span><span class="p">(</span><span class="nb">dict</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Class to store results from an hypothesis test.</span>
+
+<span class="sd">    Among the variables stored in this class, there are:</span>
+
+<span class="sd">    * the ``pvalue`` which is defined as Prob(t &gt;= tobs | H0) with t the test</span>
+<span class="sd">      statistics. If this value is lower than the predefined type I error </span>
+<span class="sd">      rate, then the null hypothesis is rejected.</span>
+<span class="sd">    * the ``Zvalue``, the standard score (or Z-score), is the p-value expressed</span>
+<span class="sd">      in the number of standard deviations.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="n">__setattr__</span> <span class="o">=</span> <span class="nb">dict</span><span class="o">.</span><span class="n">__setitem__</span>
+    <span class="n">__delattr__</span> <span class="o">=</span> <span class="nb">dict</span><span class="o">.</span><span class="n">__delitem__</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">len</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">())))</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="k">return</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">k</span><span class="o">.</span><span class="n">rjust</span><span class="p">(</span><span class="n">m</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;: &#39;</span> <span class="o">+</span> <span class="nb">repr</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+                              <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">items</span><span class="p">()])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span> <span class="o">+</span> <span class="s">&quot;()&quot;</span>
+</div>
+<div class="viewcode-block" id="pvalue_to_Zvalue"><a class="viewcode-back" href="../../Reference.html#statspy.hypotest.pvalue_to_Zvalue">[docs]</a><span class="k">def</span> <span class="nf">pvalue_to_Zvalue</span><span class="p">(</span><span class="n">pvalue</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s">&#39;two-sided&#39;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Convert a p-value to a Z-value.</span>
+
+<span class="sd">    Definition::</span>
+
+<span class="sd">        &gt;&gt;&gt; math.sqrt(2.) * scipy.special.erfcinv(mode * pvalue)</span>
+
+<span class="sd">    mode is equal to 2 for a two-sided Z-value and to 1 for a one-sided</span>
+<span class="sd">    Z-value.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    pvalue : float</span>
+<span class="sd">        p-value defined as Prob(t &gt;= tobs | H0)</span>
+<span class="sd">    mode : str</span>
+<span class="sd">        &#39;two-sided&#39; (default) or &#39;one-sided&#39;</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Zvalue : float</span>
+<span class="sd">        Z-value corresponding to the number of standard deviations</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">mode</span> <span class="o">=</span> <span class="mf">2.</span> <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s">&#39;two-sided&#39;</span> <span class="k">else</span> <span class="mf">1.</span>
+        <span class="k">if</span> <span class="n">pvalue</span> <span class="o">&lt;</span> <span class="mf">1.24e-15</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s">&#39;when pvalue is lower than 1.24e-15, Z-value is set to 8.&#39;</span><span class="p">)</span>
+            <span class="n">Zvalue</span> <span class="o">=</span> <span class="mf">8.</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">Zvalue</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">2.</span><span class="p">)</span> <span class="o">*</span> <span class="n">scipy</span><span class="o">.</span><span class="n">special</span><span class="o">.</span><span class="n">erfcinv</span><span class="p">(</span><span class="n">mode</span> <span class="o">*</span> <span class="n">pvalue</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">raise</span>
+    <span class="k">return</span> <span class="n">Zvalue</span>
+</div>
+<div class="viewcode-block" id="Zvalue_to_pvalue"><a class="viewcode-back" href="../../Reference.html#statspy.hypotest.Zvalue_to_pvalue">[docs]</a><span class="k">def</span> <span class="nf">Zvalue_to_pvalue</span><span class="p">(</span><span class="n">Zvalue</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s">&#39;two-sided&#39;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Convert a two-sided Z-value to a p-value.</span>
+
+<span class="sd">    Definition::</span>
+
+<span class="sd">        &gt;&gt;&gt; scipy.special.erfc(Zvalue / math.sqrt(2.)) / mode</span>
+
+<span class="sd">    mode is equal to 2 for a two-sided Z-value and to 1 for a one-sided</span>
+<span class="sd">    Z-value.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    Zvalue : float</span>
+<span class="sd">        Z-value corresponding to the number of standard deviations</span>
+<span class="sd">    mode : str</span>
+<span class="sd">        &#39;two-sided&#39; (default) or &#39;one-sided&#39;</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pvalue : float</span>
+<span class="sd">        p-value defined as Prob(t &gt;= tobs | H0)</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">mode</span> <span class="o">=</span> <span class="mf">2.</span> <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s">&#39;two-sided&#39;</span> <span class="k">else</span> <span class="mf">1.</span>
+        <span class="n">pvalue</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">special</span><span class="o">.</span><span class="n">erfc</span><span class="p">(</span><span class="n">Zvalue</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">2.</span><span class="p">))</span> <span class="o">/</span> <span class="n">mode</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">raise</span>
+    <span class="k">return</span> <span class="n">pvalue</span>
+</div>
+<div class="viewcode-block" id="pllr"><a class="viewcode-back" href="../../Reference.html#statspy.hypotest.pllr">[docs]</a><span class="k">def</span> <span class="nf">pllr</span><span class="p">(</span><span class="n">pf</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Profile likelihood ratio test.</span>
+
+<span class="sd">    For the likelihood ratio test, the likelihood is maximized separately for</span>
+<span class="sd">    the null and the alternative hypothesis. The word &quot;profile&quot; means that</span>
+<span class="sd">    in addition, the likelihood is maximized wrt the nuisance parameters.</span>
+<span class="sd">    The test statistics is then defined as::</span>
+
+<span class="sd">        l = L(x|theta_r,\hat{\hat{theta_s}}) / L(x|\hat{theta_r},\hat{theta_s})</span>
+<span class="sd">        q_obs = -2 * log(l)</span>
+
+<span class="sd">    and is distributed asymptotically as a chi2 distribution.</span>
+<span class="sd">    q_obs can be used to compute a p-value = Pr(q &gt;= q_obs). </span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    pf : statspy.core.PF</span>
+<span class="sd">        Probability function used in the computed of the likelihood</span>
+<span class="sd">    data : ndarray, tuple</span>
+<span class="sd">        x - variates used in the computation of the likelihood </span>
+<span class="sd">    kw : keyword arguments (optional)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    result : statspy.hypotest.Result</span>
+<span class="sd">        All information about the test is stored in the Result class.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># Get initial values of parameters</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="n">pf</span><span class="o">.</span><span class="n">get_list_free_params</span><span class="p">()</span>
+    <span class="n">popt</span> <span class="o">=</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">ipar</span><span class="p">,</span><span class="n">par</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+        <span class="n">popt</span><span class="p">[</span><span class="n">ipar</span><span class="p">]</span> <span class="o">=</span> <span class="n">par</span><span class="o">.</span><span class="n">value</span>
+
+    <span class="n">result</span> <span class="o">=</span> <span class="n">Result</span><span class="p">()</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">pf</span> <span class="o">=</span> <span class="n">pf</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">data</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">pllr</span> <span class="o">=</span> <span class="n">pf</span><span class="o">.</span><span class="n">pllr</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">Zvalue</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">pllr</span><span class="p">)</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">pvalue</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">pllr</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">all_discrete</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="k">for</span> <span class="n">rv</span> <span class="ow">in</span> <span class="n">pf</span><span class="o">.</span><span class="n">_rvs</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">rv</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="n">sp</span><span class="o">.</span><span class="n">RV</span><span class="o">.</span><span class="n">DISCRETE</span><span class="p">:</span> <span class="k">continue</span>
+        <span class="n">all_discrete</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">break</span>
+    <span class="k">if</span> <span class="n">all_discrete</span><span class="p">:</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">pvalue</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">pvalue</span> <span class="o">+</span> <span class="n">scipy</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">chi2</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">pllr</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;PLLR test: pvalue = </span><span class="si">%f</span><span class="s">, Zvalue = </span><span class="si">%f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">pvalue</span><span class="p">,</span> 
+                                                          <span class="n">result</span><span class="o">.</span><span class="n">Zvalue</span><span class="p">))</span>
+
+    <span class="c"># Restore initial value of parameters</span>
+    <span class="k">for</span> <span class="n">ipar</span><span class="p">,</span><span class="n">par</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+        <span class="n">par</span><span class="o">.</span><span class="n">value</span> <span class="o">=</span> <span class="n">popt</span><span class="p">[</span><span class="n">ipar</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">result</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="../../np-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">StatsPy 0.1.0a1 documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, StatsPy Development Team.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2b1.
+    </div>
+  </body>
+</html>

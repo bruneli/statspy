@@ -260,8 +260,8 @@ be done like:</p>
 <span class="n">pdf_fit_bkg</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">PF</span><span class="p">(</span><span class="s">&quot;pdf_fit_bkg=expon(x;offset=50,lambda=10)&quot;</span><span class="p">)</span>
 <span class="n">pdf_fit_sig</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">PF</span><span class="p">(</span><span class="s">&quot;pdf_fit_sig=norm(x;mu=120,sigma=20)&quot;</span><span class="p">)</span>
 <span class="n">pdf_fit</span> <span class="o">=</span> <span class="n">pdf_fit_bkg</span> <span class="o">+</span> <span class="n">pdf_fit_sig</span>
+<span class="n">pdf_fit_sig</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="s">&#39;frac(sig)&#39;</span>
 <span class="c"># Least square fit to the data (whole data range)</span>
-<span class="n">params</span><span class="p">,</span> <span class="n">pcov</span><span class="p">,</span> <span class="n">chi2min</span><span class="p">,</span> <span class="n">pvalue</span> <span class="o">=</span> <span class="n">pdf_fit</span><span class="o">.</span><span class="n">leastsq_fit</span><span class="p">(</span><span class="n">xdata</span><span class="p">,</span> <span class="n">ydata</span><span class="p">,</span> <span class="n">dx</span><span class="o">=</span><span class="n">dx</span><span class="p">)</span>
 </pre></div>
 </div>
 <div class="figure">
@@ -351,12 +351,12 @@ is to add another method (Neyman construction) and a Bayesian
 method</p>
 </div>
 <ul>
-<li><p class="first">The profile likelihood ratio method is an approximate frequentist approach
-relying on the profile likelihood ratio statistics and the Wilks&#8217; theorem
-to build confidence intervals. Its main advantage with respect to other
-frequentist methods like the Neyman constructions is its speed and the
-possibility to apply it also in problems with a large number of (nuisance)
-parameters.
+<li><p class="first">The <strong>profile (log-)likelihood ratio (PLLR)</strong> method is an approximate
+frequentist approach relying on the profile likelihood ratio test statistics
+and the Wilks&#8217; theorem to build confidence intervals.
+Its main advantage with respect to other frequentist methods like the Neyman
+construction is its speed and the possibility to apply it also in problems
+with a large number of (nuisance) parameters.
 To get an approximate confidence interval on a parameter
 <span class="formula"><i>θ</i><sub><i>i</i></sub></span>
 , the algorithm consists in:</p>
@@ -379,7 +379,7 @@ To get an approximate confidence interval on a parameter
  and
 <span class="formula"><i>L</i>(<i>x</i>|<i>θ̂</i><sub><i>i</i></sub>, <i>θ̂</i><sub><i>s</i></sub>)</span>
  are the conditional and
-unconditional likelihood functions respectively.</p>
+unconditional maximum of the likelihood function respectively.</p>
 </li>
 <li><p class="first">Search for values of <span class="formula"><i>q</i>(<i>θ</i><sub><i>i</i></sub>)</span>
  equaling quantile defined as:</p>
@@ -398,6 +398,51 @@ with a toy MC technique.</p>
 </div>
 <div class="section" id="hypothesis-tests">
 <h3><a class="toc-backref" href="#id15">Hypothesis tests</a><a class="headerlink" href="#hypothesis-tests" title="Permalink to this headline">¶</a></h3>
+<p>As for interval estimation, the module <tt class="docutils literal"><span class="pre">statspy.hypotest</span></tt> provides methods
+to perform hypothesis tests.</p>
+<ul>
+<li><p class="first">Quoting &#8220;Kendall&#8217;s Advanced Theory of Statistics&#8221;, the <strong>likelihood ratio
+method</strong> has played a role in the theory of tests analogous to that of the
+maximum likelihood method in the theory of estimation. Generally, one wish
+to test the null hypothesis</p>
+<div class="formula">
+<i>H</i><sub>0</sub>:<i>θ</i><sub><i>r</i></sub> = <i>θ</i><sub><i>r</i>0</sub>
+</div>
+<p>against the alternative hypothesis</p>
+<div class="formula">
+<i>H</i><sub>1</sub>:<i>θ</i><sub><i>r</i></sub> ≠ <i>θ</i><sub><i>r</i>0</sub>
+</div>
+<p>taking into accound a number of nuisance parameters <span class="formula"><i>θ</i><sub><i>s</i></sub></span>
+.
+As for the likelihood ratio method used for interval estimation, one
+defines the log-likehood ratio test statistics as</p>
+<div class="formula">
+Λ(<i>θ</i><sub><i>r</i>0</sub>) = <span class="fraction"><span class="ignored">(</span><span class="numerator"><i>L</i>(<i>x</i>|<i>θ</i><sub><i>r</i>0</sub>, <i>θ̂̂</i><sub><i>s</i></sub>)</span><span class="ignored">)/(</span><span class="denominator"><i>L</i>(<i>x</i>|<i>θ̂</i><sub><i>r</i></sub>, <i>θ̂</i><sub><i>s</i></sub>)</span><span class="ignored">)</span></span>
+</div>
+<div class="formula">
+<i>q</i>(<i>θ</i><sub><i>r</i>0</sub>) =  − 2<i>log</i>(Λ(<i>θ</i><sub><i>r</i>0</sub>))
+</div>
+<p>with <span class="formula"><i>L</i>(<i>x</i>|<i>θ</i><sub><i>r</i>0</sub>, <i>θ̂̂</i><sub><i>s</i></sub>)</span>
+ and
+<span class="formula"><i>L</i>(<i>x</i>|<i>θ̂</i><sub><i>r</i></sub>, <i>θ̂</i><sub><i>s</i></sub>)</span>
+ the conditional and
+unconditional maximum of the likelihood function respectively.
+Asymptotically <span class="formula"><i>q</i>(<i>θ</i><sub><i>r</i>0</sub>)</span>
+ is distributed as a chi2 function
+from which p-value or Z-value can be computed.
+If the p-value is lower than a predefined type I error rate, then the
+null hypothesis is rejected.</p>
+<p><strong>Example 3 (Con&#8217;t)</strong>: considering again the on/off problem, to perform
+a likelihood ratio test on the background only hypothesis (<tt class="docutils literal"><span class="pre">mu=0</span></tt>),
+one would do:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span> <span class="c"># n_on, n_off</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">statspy.hypotest</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span> <span class="o">=</span> <span class="n">statspy</span><span class="o">.</span><span class="n">hypotest</span><span class="o">.</span><span class="n">pllr</span><span class="p">(</span><span class="n">likelihood</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span> <span class="s">&#39;p-value&#39;</span><span class="p">,</span><span class="n">result</span><span class="o">.</span><span class="n">pvalue</span><span class="p">,</span><span class="s">&#39;Z-score&#39;</span><span class="p">,</span><span class="n">result</span><span class="o">.</span><span class="n">Zvalue</span>
+</pre></div>
+</div>
+</li>
+</ul>
 </div>
 </div>
 </div>

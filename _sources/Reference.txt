@@ -19,9 +19,19 @@ Random Variable
 .. autoclass:: statspy.core.RV
     :members:
 
-Interval estimation 
--------------------
+Intervals estimation 
+--------------------
 .. automodule:: statspy.interval
+
+Hypothesis tests
+----------------
+.. automodule:: statspy.hypotest
+
+Mathematical functions
+----------------------
+.. autofunction:: statspy.core.exp
+.. autofunction:: statspy.core.log
+.. autofunction:: statspy.core.sqrt
 
 Miscellaneous functions
 -----------------------
