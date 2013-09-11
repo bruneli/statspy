@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 
 import sys
+if sys.version_info[0] >= 3:
+    import builtins
+else:
+    import __builtin__ as builtins
 
 DISTNAME = 'statspy'
 DESCRIPTION = 'Python module for statistics built on top of NumPy/SciPy'
@@ -8,6 +12,9 @@ LONG_DESCRIPTION = open('README.rst').read()
 URL = 'https://github.com/bruneli/statspy/wiki'
 LICENSE = 'new BSD'
 DOWNLOAD_URL = 'http://sourceforge.net/projects/statspy/files/'
+
+builtins.__STATSPY_SETUP__ = True
+
 import statspy
 VERSION = statspy.__version__
 
@@ -19,6 +26,8 @@ def configuration(parent_package='', top_path=None):
                        delegate_options_to_subpackages=True,
                        quiet=True)
     config.add_subpackage('statspy')
+    config.add_data_dir('statspy/tests')
+    config.add_data_files('README.rst')
     return config
 
 def setup_package():
