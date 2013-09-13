@@ -71,7 +71,7 @@ for exp in exps:
     b.value = n_off / tau0
     s.value = n_on - b.value
     sigmab.value = math.sqrt(b.value) / math.sqrt(tau0)
-    
+
     # Compute Z-value in case of no uncertainty on b
     Z_P = statspy.hypotest.pvalue_to_Zvalue(pmf_on.pvalue(n_on))
     exp.append(Z_P)

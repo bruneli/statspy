@@ -10,7 +10,7 @@ import scipy.special
 import scipy.stats
 import statspy as sp
 
-__all__ =['Result','pvalue_to_Zvalue','Zvalue_to_pvalue','pllr']
+__all__ =['Result','pvalue_to_Zvalue','Zvalue_to_pvalue','pllr','hybrid']
 
 # Logging system
 logger = logging.getLogger(__name__)
@@ -169,3 +169,47 @@ def pllr(pf, data, **kw):
         par.value = popt[ipar]
 
     return result
+
+def hybrid_pvalue(pf, data, prior=None, **kw):
+    """Frequentist/Bayesian hybrid hypothesis test.
+
+    p-values are computed from the likelihood, but the nuisance parameters are
+    margilanized via integration on priors::
+
+        pvalue_cond(theta_r, theta_s) = Prob(x > x_obs | theta_r,theta_s)
+        pvalue(theta_r) = integral pvalue_cond(theta_r, theta_s) * prior
+
+    where theta_r is the parameter of interest and theta_s are the nuisance
+    parameters.
+
+    Parameters
+    ----------
+    pf : statspy.core.PF
+        Probability function used in the computed of the likelihood
+    data : ndarray, tuple
+        x - variates used in the computation of the likelihood
+    prior : statspy.core.PF (optional)
+        Bayesian prior distribution on the nuisance parameters.
+        If not specified, prior is built from parameters.
+    kw : keyword arguments (optional)
+
+        mode : str
+            Can be an analytic integration 'num' or a MC based integration
+            'rvs'.
+        ntoys : int
+            Number of toy experiments
+
+    Returns
+    -------
+    result : statspy.hypotest.Result
+        All information about the test is stored in the Result class.
+
+    """
+    #if prior == None:
+
+    result = Result()
+    result.pf = pf
+    result.data = data
+    result.prior = prior
+    result.pvalue = scipy.stats.chi2.sf(result.pllr, 1)
+    result.Zvalue = pvalue_to_Zvalue(result.pvalue)

@@ -70,6 +70,9 @@ class Param(object):
        poi :  bool
            Tells whether a parameter is a parameter of interest in an
            hypothesis test.
+       prior : statspy.core.PF
+           Only for bayesian statistics, a prior probability distribution
+           can be specified.
        isuptodate : bool
            Tells whether value needs to be computed again or not
        logger : logging.Logger
@@ -120,12 +123,14 @@ class Param(object):
         self.strform = kwargs.get('strform', None)
         self.const   = kwargs.get('const', False)
         self.poi     = kwargs.get('poi', False)
+        self.prior   = kwargs.get('prior', None)
         self.partype = Param.RAW
         self.isuptodate = True
         self.logger  = logging.getLogger('statspy.core.Param')
         # Internal class members
         self._derivative = kwargs.get('derivative', None)
         self._pcov = None
+        self._posterior = None
         try:
             self.logger.debug('args = %s, kwargs = %s',args,kwargs)
             foundArgs = self._check_args_syntax(args)
@@ -136,6 +141,11 @@ class Param(object):
                 self._evaluate()
             if self.name != None:
                 self._register_in_db(self.name)
+            if self.prior != None:
+                if type(self.prior) == str:
+                    self.prior = PF(self.prior)
+                elif not isinstance(self.prior, PF):
+                    raise SyntaxError('prior is incorrectly specified.')
         except:
             raise
 
@@ -1585,6 +1595,10 @@ class PF(object):
             if isinstance(self.func, list):
                 if len(self.func) == 3:
                     auto_loc = True
+                    if self.func[0] == operator.mul:
+                        data1 = self.func[1].rvs(**kwargs)
+                        data2 = self.func[2].rvs(**kwargs)
+                        # returns a structured array
                     if self.func[0] == operator.add:
                         data1 = self.func[1].rvs(**kwargs)
                         data2 = self.func[2].rvs(**kwargs)
@@ -2527,3 +2541,13 @@ def update_status(obj_dict):
                     update_status(_dpfs[obj.name])
                 if obj_key == "params" and obj.name in _dparams:
                     update_status(_dparams[obj.name])
+
+def _join_struct_arrays(arrays):
+    sizes = numpy.array([a.itemsize for a in arrays])
+    offsets = numpy.r_[0, sizes.cumsum()]
+    n = len(arrays[0])
+    joint = numpy.empty((n, offsets[-1]), dtype=numpy.uint8)
+    for a, size, offset in zip(arrays, sizes, offsets):
+        joint[:,offset:offset+size] = a.view(numpy.uint8).reshape(n,size)
+    dtype = sum((a.dtype.descr for a in arrays), [])
+    return joint.ravel().view(dtype)

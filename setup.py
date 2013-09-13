@@ -9,7 +9,7 @@ else:
 DISTNAME = 'statspy'
 DESCRIPTION = 'Python module for statistics built on top of NumPy/SciPy'
 LONG_DESCRIPTION = open('README.rst').read()
-URL = 'https://github.com/bruneli/statspy/wiki'
+URL = 'http://bruneli.github.io/statspy/'
 LICENSE = 'new BSD'
 DOWNLOAD_URL = 'http://sourceforge.net/projects/statspy/files/'
 
