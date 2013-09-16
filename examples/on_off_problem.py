@@ -11,7 +11,6 @@ are described in http://arxiv.org/abs/physics/0702156
 
 import math
 import matplotlib.pyplot as plt
-from matplotlib import ticker
 import numpy as np
 import statspy as sp
 import statspy.hypotest

@@ -844,7 +844,7 @@ class PF(object):
 
         """
         # Check if self.func contains a pdf() or a pmf() method
-        if self.pftype == PF.RAW:
+        if self.pftype == PF.RAW and self.func != 'hist':
             method_name = 'pdf'
             try:
                 if isinstance(self.func, scipy.stats.rv_discrete):
@@ -883,6 +883,12 @@ class PF(object):
                             the_args.append(rv_values[irv])
                     vals[idx-1] = self.func[idx](*the_args, **kwargs)
                 value = op(vals[0],vals[1])
+        elif self.func == 'hist':
+            if self._spline_pf == None:
+                value = self._cache.pf(np.abs(self._cache.bins - 
+                                              rv_values[0]).argmin())
+            else:
+                value = self._spline_pf(*rv_values)
         else:
             #  - in case of a RAW PF, call directly the scipy function
             if method_name == 'pmf': 
@@ -950,7 +956,7 @@ class PF(object):
 
         """
         # Check if self.func contains a cdf() method
-        if self.pftype == PF.RAW:
+        if self.pftype == PF.RAW and self.func != 'hist':
             try:
                 check_method_exists(obj=self.func,name='cdf')
             except:
@@ -987,6 +993,13 @@ class PF(object):
                     vals[idx-1] = self.func[idx].cdf(*the_args, **kwargs)
                 value = self.norm.value * op(vals[0],vals[1])
             return value
+        elif self.func == 'hist':
+            if self._spline_cdf == None:
+                value = self._cache.cdf(np.abs(self._cache.bins - 
+                                               rv_values[0]).argmin())
+            else:
+                value = self._spline_cdf(*rv_values)
+            return self.norm.value * value
         #  - in case of a RAW PF, call directly the scipy function
         return self.norm.value * self.func.cdf(rv_values[0], *param_values)
 
@@ -1281,7 +1294,7 @@ class PF(object):
 
         """
         # Check if self.func contains a logpdf() or a logpmf() method
-        if self.pftype == PF.RAW:
+        if self.pftype == PF.RAW and self.func != 'hist':
             method_name = 'logpdf'
             try:
                 if isinstance(self.func, scipy.stats.rv_discrete):
@@ -1312,14 +1325,16 @@ class PF(object):
                 for idx in [1,2]:
                     the_args = []
                     for irv,rv in enumerate(self._rvs):
-                        if rv[0] in self.func[idx].rv_names():
-                            the_args.append(rv_values[irv])
+                        if not rv[0] in self.func[idx].rv_names(): continue
+                        the_args.append(rv_values[irv])
                     vals[idx-1] = self.func[idx].logpf(*the_args, **kwargs)
-                value = operator.add(vals[0],vals[1])
+                value = operator.add(vals[0], vals[1])
                 if self._scale != None and self._scale.value != 0.:
                     value = value - self._scale.value
             else:
                 raise NotImplementedError('Not yet possible...')
+        elif self.func == 'hist':
+            value = np.log(self(*args, **kwargs))
         else:
             #  - in case of a RAW PF, call directly the scipy function
             if method_name == 'logpmf':
@@ -1445,26 +1460,47 @@ class PF(object):
         return nllf
 
     def pllr(self, data, **kw):
-        """Evaluate the profile log-likelihood ratio ( * -2 )
+        """Evaluate the Profile Log-Likelihood Ratio ( * -2 )
 
-        The profile likelihood ratio is defined by::
+        Given a null and an alternate hypothesis, the profile likelihood ratio
+        is defined by::
 
-            l = L(x|theta_r,\hat{\hat{theta_s}}) / L(x|\hat{theta_r},\hat{theta_s})
+            l = max{L(x|theta) : theta in Theta0} / max{L(x|theta) : theta in Theta}
 
-        The profile log-likelihood ratio is then::
+        with 
 
-            q = -2 * log(l)
+        * Theta the ensemble of theta values satisfied both by the null H0 and
+        the alternate H1 hypothesis,
+        * Theta0 a subset of Theta specified by H0,
+        * L the Likelihood function (computed from data).
+ 
+        If theta_r, the parameters of interest specified by the hypothesis,
+        have fixed values under H0, l can be rewritten as::
 
-        Where
+            l = L(x|theta_r0,\hat{\hat{theta_s}}) / L(x|\hat{theta_r},\hat{theta_s})
 
-        * L is the Likelihood function (computed via data)
+        where
+
         * theta_r is the list of parameters of interest (Param.poi = True)
         * theta_s is the list of nuisance parameters
         * hat or double hat refers to the unconditional and conditional
           maximum likelilood estimates of the parameters respectively.
 
-        pllr is used as a test statistics for problems with numerous 
-        nuisance parameters. Asymptotically, the pllr PF is described by a
+        When the alternative hypothesis also has fixed values theta_r1,
+        the above formula is rewritten as::
+
+            l = L(x|theta_r0,\hat{\hat{theta_s}}) / L(x|theta_r1,\hat{theta_s})
+
+        In absence of nuisance parameters, it is the most powerful test
+        described by the Neyman-Pearson Lemma.
+
+        Because of its asymptotic properties, the test statistics is defined as
+        the profile log-likelihood ratio times -2::
+
+            t_obs = -2 * log(l)
+
+        In many situations, asymptotically, the test statitics PF is described
+        by a
         chi2 distribution (Wilks theorem).
         Further information on the likelihood ratio can be found in Chapter 
         22 of "Kendall's Advanced Theory of Statistics, Volume 2A".
@@ -1477,6 +1513,10 @@ class PF(object):
             Specify any Parameter of interest name of the considered PF,
             or any option used by the method maxlikelihood_fit.
 
+            h0 : dict
+                parameter(s) value(s)/range(s) for the null hypothesis
+            h1 : dict
+                parameter(s) value(s)/range(s) for the alternate hypothesis
             uncond_nllf : float
                 unconditional minimal negative log-likelihood function value
 
@@ -1486,26 +1526,74 @@ class PF(object):
             Profile log-likelihood ratio times -2
 
         """
-        # Find the free parameters and the parameters of interest 
+        free_params = self.get_list_free_params()
+        
+        # Check if hypothesis are nested
+        if 'h0' in kw and 'h1' in hw and kw['h0'].keys() != kw['h1'].keys():
+            raise SyntaxError('h0 : %s and h1 : %s are not nested hyp.' %
+                              (kw['h0'],kw['h1']))
+        for hypo in ['h0','h1']:
+            if not hypo in kw: continue
+            for key in kw[hypo]:
+                found = False
+                for par in free_params:
+                    if par.name != key: continue
+                    found = True
+                    par.poi = True
+                if not found:
+                    raise SyntaxError('%s not found among the free params.' %
+                                      key)
+
+        # Find the parameters of interest 
         # Update values of non-const PF parameters if specified in **kw
-        self.get_list_free_params()
         lpois = []
-        for par in self._free_params:
-            if not par.poi: continue
-            lpois.append(par)
+        for par in free_params:
             if par.name in kw:
                 par.value = kw[par.name]
-        # Compute the conditional nllf (pois are fixed)
+            if not par.poi: continue
+            lpois.append(par)
+
+        # Compute the nllf conditional to H0
+        all_const = True
         for idx,poi in enumerate(lpois):
-            poi.const = True
-        cond_params, cond_nllf = self.maxlikelihood_fit(data, **kw)
-        # Compute the unconditional nllf (pois are treated as free parameters)
-        # if not provided
+            if 'h0' in kw and poi.name in kw['h0']:
+                if type(kw['h0'][poi.name]) == list:
+                    all_const = False
+                    poi.bounds = kw['h0'][poi.name]
+                else:
+                    poi.value = kw['h0'][poi.name]
+                    poi.const = True
+            else:
+                poi.const = True
+        if len(lpois) == len(free_params) and all_const: # simple hypothesis
+            cond_nllf = self.nllf(data, **kw)
+        else: # composite hypothesis
+            cond_params, cond_nllf = self.maxlikelihood_fit(data, **kw)
+
+        # Compute the unconditional nllf
+        all_const = True
         for idx,poi in enumerate(lpois):
-            poi.const = False
+            if 'h1' in kw and poi.name in kw['h1']:
+                if type(kw['h1'][poi.name]) == list:
+                    all_const = False
+                    if ('h0' in kw and poi.name in kw['h0'] and
+                        type(kw['h0'][poi.name]) == list):
+                        poi.bounds = [ x+y for x,y in zip(kw['h0'][poi.name],
+                                                          kw['h1'][poi.name]) ]
+                    else:
+                        poi.bounds = kw['h1'][poi.name]
+                else:
+                    poi.value = kw['h1'][poi.name]
+                    poi.const = True
+            else:
+                poi.const = False
         uncond_nllf = kw.get('uncond_nllf', None)
         if uncond_nllf == None:
-            uncond_params, uncond_nllf = self.maxlikelihood_fit(data, **kw)
+            if len(lpois) == len(free_params) and all_const: # simple hypothesis
+                uncond_nllf = self.nllf(data, **kw)
+            else: # composite hypothesis
+                uncond_params, uncond_nllf = self.maxlikelihood_fit(data, **kw)
+
         # Evaluate the pllr
         pllr = 2. * (cond_nllf - uncond_nllf)
         return pllr
@@ -1597,9 +1685,16 @@ class PF(object):
                     auto_loc = True
                     if self.func[0] == operator.mul:
                         data1 = self.func[1].rvs(**kwargs)
+                        if len(self.func[1]._rvs) == 1:
+                            data1 = data1.view(dtype=[(self.func[1]._rvs[0][0],
+                                                       data1.dtype)])
                         data2 = self.func[2].rvs(**kwargs)
-                        # returns a structured array
-                    if self.func[0] == operator.add:
+                        if len(self.func[2]._rvs) == 1:
+                            data2 = data2.view(dtype=[(self.func[2]._rvs[0][0],
+                                                       data2.dtype)])
+                        # merge and returns a structured array
+                        data = _join_struct_arrays([data1, data2])
+                    elif self.func[0] == operator.add:
                         data1 = self.func[1].rvs(**kwargs)
                         data2 = self.func[2].rvs(**kwargs)
                         data3 = scipy.stats.uniform.rvs(size=len(data1))
@@ -1699,7 +1794,7 @@ class PF(object):
 
         """
         # Check if self.func contains an sf() method
-        if self.pftype == PF.RAW:
+        if self.pftype == PF.RAW and self.func != 'hist':
             try:
                 check_method_exists(obj=self.func,name='sf')
             except:
@@ -1736,6 +1831,13 @@ class PF(object):
                     vals[idx-1] = self.func[idx].sf(*the_args, **kwargs)
                 value = self.norm.value * op(vals[0],vals[1])
             return value
+        elif self.func == 'hist':
+            if self._spline_cdf == None:
+                value = self._cache.cdf(np.abs(self._cache.bins - 
+                                               rv_values[0]).argmin())
+            else:
+                value = self._spline_cdf(*rv_values)
+            return (1 - self.norm.value * value)
         #  - in case of a RAW PF, call directly the scipy function
         return self.norm.value * self.func.sf(rv_values[0], *param_values)
 
@@ -1805,17 +1907,19 @@ class PF(object):
             name = self._rvs[0][0]
             method = self.options.get('spline',
                                       scipy.interpolate.UnivariateSpline)
-            self._spline_pf = method(self._cache[name], self._cache.pf)
-            self._spline_cdf = method(self._cache[name], self._cache.cdf)
+            if method != None:
+                self._spline_pf = method(self._cache[name], self._cache.pf)
+                self._spline_cdf = method(self._cache[name], self._cache.cdf)
         elif len(self._rvs) == 2:
             method = self.options.get('spline',
                                       scipy.interpolate.RectBivariateSpline)
-            name1 = self._rvs[0][0]
-            name2 = self._rvs[1][0]
-            self._spline_pf = method(self._cache[name1], self._cache[name2],
-                                     self._cache.pf)
-            self._spline_cdf = method(self._cache[name1], self._cache[name2],
-                                      self._cache.cdf)
+            if method != None:
+                name1 = self._rvs[0][0]
+                name2 = self._rvs[1][0]
+                self._spline_pf = method(self._cache[name1], self._cache[name2],
+                                         self._cache.pf)
+                self._spline_cdf = method(self._cache[name1], self._cache[name2],
+                                          self._cache.cdf)
         return
 
     def _check_args_syntax(self, args):
@@ -1869,7 +1973,7 @@ class PF(object):
                 if par.name == None: continue
                 if not par.name in _dparams: continue
                 _dparams[par.name]['pfs'].append(self.name)
-        if not foundArgs and not 'func' in kwargs:
+        if not foundArgs and not ('func' in kwargs or 'hist' in kwargs):
             raise SyntaxError("You cannot declare a PF without specifying a function to caracterize it.")
         if 'func' in kwargs:
             if self.func != None:
@@ -1896,6 +2000,24 @@ class PF(object):
                     self._build_cache()
             else:
                 self.pftype = PF.RAW
+        if 'hist' in kwargs:
+            if (not isinstance(kwargs['hist'], (tuple, list)) or
+                len(kwargs['hist']) != 2):
+                raise TypeError('hist keywork should be a tuple with (pf, bins)')
+            self.pftype = PF.RAW
+            self.func = 'hist'
+            self._rvs = [['bins', -np.inf, np.inf, RV.CONTINUOUS]]
+            pf = kwargs['hist'][0]
+            bins = kwargs['hist'][1]
+            dtype = [('bins',float),('pf',float),('cdf',float)]
+            self._cache = np.recarray(len(pf), dtype=dtype)
+            self._cache.bins = 0.5*(bins[1:] + bins[:-1]) # Bin centers
+            self._cache.pf = pf                           # Bin contents
+            dx = bins[1:] - bins[:-1]                     # Bin widths
+            integral = (self._cache.pf * dx).sum()
+            self._cache.cdf = np.cumsum(self._cache.pf * dx)
+            self.norm = Param(value=1./integral)
+            self._build_spline()
         if 'param' in kwargs:
             if len(self.params) != 0: 
                 raise SyntaxError("self.params are already declared.")
@@ -2001,7 +2123,11 @@ class PF(object):
         rv_values = []
         if len(args):
             for arg in args:
-                rv_values.append(arg)
+                if isinstance(arg, np.ndarray) and arg.dtype.names != None:
+                    for dname in arg.dtype.names:
+                        rv_values.append(arg[dname])
+                else:
+                    rv_values.append(arg)
         else:
             rv_values = []
             for rv_name in self.rv_names():
@@ -2543,11 +2669,9 @@ def update_status(obj_dict):
                     update_status(_dparams[obj.name])
 
 def _join_struct_arrays(arrays):
-    sizes = numpy.array([a.itemsize for a in arrays])
-    offsets = numpy.r_[0, sizes.cumsum()]
-    n = len(arrays[0])
-    joint = numpy.empty((n, offsets[-1]), dtype=numpy.uint8)
-    for a, size, offset in zip(arrays, sizes, offsets):
-        joint[:,offset:offset+size] = a.view(numpy.uint8).reshape(n,size)
     dtype = sum((a.dtype.descr for a in arrays), [])
-    return joint.ravel().view(dtype)
+    joint = np.empty(len(arrays[0]), dtype=dtype)
+    for a in arrays:
+        for name in a.dtype.names:
+            joint[name] = a[name]
+    return joint
