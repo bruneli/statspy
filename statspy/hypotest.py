@@ -118,8 +118,8 @@ def Zvalue_to_pvalue(Zvalue, mode='two-sided'):
         raise
     return pvalue
 
-def pllr(pf, data, **kw):
-    """Profile Log-Likelihood Ratio test.
+def likelihood_ratio(pf, data, **kw):
+    """Perform a Likelihood Ratio test.
 
     This test relies on the log-likelihood ratio statistics defined as::
 
@@ -143,17 +143,22 @@ def pllr(pf, data, **kw):
       following the Neyman-Pearson Lemma.
     * A likelihood ratio with fixed values at the numerator::
 
-        l = L(x|theta_r0,\hat{\hat{theta_s}}) / L(x|theta_r1,\hat{theta_s})
+        l = L(x|theta_r0,\hat{\hat{theta_s}}) / L(x|\hat{theta_r},\hat{theta_s})
 
-      when the null hypothesis is taking single values.
+      when the null hypothesis is taking single values. \hat{\hat{theta_s}}
+      and \hat{theta_r},\hat{theta_s} are the conditional and unconditional
+      maximum likelihood estimate respectively.
+      In likelihood ratio test approach the nuisance parameters theta_s are
+      "profiled". 
 
-    The word "profile" means that the likelihood is maximized wrt the nuisance
-    parameters when present.
     Asymptotically, according to the Wilks' theorem, generally the test 
     statistics t is distributed as a chi2 distribution from which a p-value
     Pr(t >= t_obs) can be computed.
     When the chi2 approximation is not met, it is possible to artificially
-    generate the distribution of t via pseudo experiments.
+    generate the distribution of t via pseudo experiments but this procedure
+    can be very slow. If you know the distribution of the test statistics
+    or you evaluated it in another way, it is also possible to specify it
+    via the t_pf keyword argument.
 
     Parameters
     ----------
@@ -171,8 +176,11 @@ def pllr(pf, data, **kw):
             parameter(s) value(s)/range(s) for the null hypothesis
         h1 : dict
             parameter(s) value(s)/range(s) for the alternate hypothesis
+        t_pf : statspy.core.PF
+            Probability function of the test statistics if specified via
+            this keyword.
         ntoys : int
-            number of pseudo-experiments to generate.
+            number of pseudo-experiments to generate in "toys" mode.
 
     Returns
     -------
@@ -192,9 +200,12 @@ def pllr(pf, data, **kw):
     result.pf = pf
     result.data = data
     result.mode = kw.get('mode','asymptotic')
+    result.t_pf = kw.get('t_pt',None)
 
     # Probability function of the test statistics
-    if result.mode == 'asymptotic':
+    if result.t_pf != None: # Specified as input
+        result.mode = 'input'
+    elif result.mode == 'asymptotic': # Wilks approximation
         df = [0, 0]
         for i,hypo in enumerate(['h0','h1']):
             if hypo in kw:
@@ -245,8 +256,8 @@ def hybrid_pvalue(pf, data, prior=None, **kw):
     p-values are computed from the likelihood, but the nuisance parameters are
     margilanized via integration on priors::
 
-        pvalue_cond(theta_r, theta_s) = Prob(x > x_obs | theta_r,theta_s)
-        pvalue(theta_r) = integral pvalue_cond(theta_r, theta_s) * prior
+        pvalue(theta_r, theta_s) = Prob(x > x_obs | theta_r,theta_s)
+        pvalue(theta_r) = integral pvalue(theta_r, theta_s) * prior(theta_s)
 
     where theta_r is the parameter of interest and theta_s are the nuisance
     parameters.
