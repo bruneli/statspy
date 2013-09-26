@@ -17,7 +17,7 @@ import scipy.optimize
 import scipy.signal
 import scipy.stats
 
-__all__ = ['Param','PF','RV','get_obj','exp','log','sqrt']
+__all__ = ['Param','PF','RV','get_obj','abs','exp','log','sqrt']
 
 _dparams = {}  # Dictionary hosting the list of parameters
 _dpfs    = {}  # Dictionary hosting the list of probability functions
@@ -150,22 +150,28 @@ class Param(object):
             raise
 
     def __add__(self, other):
-        """Add a parameter to another parameter or a numerical value.
+        """Add a parameter to another parameter, a numerical value or a
+           random variable.
         
         Parameters
         ----------
         self : Param
-        other : Param, int, long, float
+        other : Param, int, long, float, RV
 
         Returns
         -------
-        new : Param
-             new parameter which is the sum of self and other
+        new : Param, RV
+             new parameter which is the sum of self and other,
+             except if other is a random variable, then returns a new
+             random variable.
         
         """
         try:
-            new = Param(formula=[[operator.add, self, other]],
-                        strform=Param._build_str_formula(self,'+',other))
+            if isinstance(other, RV):
+                new = RV(pf=other.pf.loc(self), rvtype=other.rvtype())
+            else:
+                new = Param(formula=[[operator.add, self, other]],
+                            strform=Param._build_str_formula(self,'+',other))
         except:
             raise
         return new
@@ -292,43 +298,55 @@ class Param(object):
         return self
 
     def __mul__(self, other):
-        """Multiply a parameter by another parameter or by a numerical value.
+        """Multiply a parameter by another parameter, a numerical value or
+           a random variable.
         
         Parameters
         ----------
         self : Param
-        other : Param, int, long, float
+        other : Param, int, long, float, RV
 
         Returns
         -------
-        new : Param
-             new parameter which is the product of self and other
+        new : Param, RV
+             new parameter which is the product of self and other,
+             except if other is a random variable, then returns a new
+             random variable.
         
         """
         try:
-            new = Param(formula=[[operator.mul, self, other]],
-                        strform=Param._build_str_formula(self,'*',other))
+            if isinstance(other, RV):
+                new = RV(pf=other.pf.scale(self), rvtype=other.rvtype())
+            else:
+                new = Param(formula=[[operator.mul, self, other]],
+                            strform=Param._build_str_formula(self,'*',other))
         except:
             raise
         return new
 
     def __pow__(self, other):
-        """Raise a parameter the power.
+        """Raise a parameter to the power other.
         
         Parameters
         ----------
         self : Param
-        other : Param, int, long, float
+        other : Param, int, long, float, RV
 
         Returns
         -------
-        new : Param
+        new : Param, RV
              new parameter which is self raised to the power of other
+             except if other is a random variable, then returns a new
+             random variable.
         
         """
         try:
-            new = Param(formula=[[operator.pow, self, other]],
-                        strform=Param._build_str_formula(self,'**',other))
+            if isinstance(other, RV):
+                new = exp(other * log(self))
+                new.set_rvtype(other.rvtype())
+            else:
+                new = Param(formula=[[operator.pow, self, other]],
+                            strform=Param._build_str_formula(self,'**',other))
         except:
             raise
         return new
@@ -863,10 +881,18 @@ class PF(object):
             len(self.func) == 1 and isinstance(self.func[0], PF)):
             value = self.func[0](*rv_values, **kwargs)
         elif self.pftype == PF.DERIVED:
-            if not isinstance(self.func, list) or len(self.func) != 3:
+            if (not isinstance(self.func, list) or len(self.func) < 3 or
+                len(self.func) > 4):
                 raise SyntaxError('DERIVED function is not recognized.')
             op = self.func[0] # operator
-            if type(op) == str:
+            if type(op) == str and op == 'rvabs':
+                # rv abs
+                value = self.func[1](rv_values[0], **kwargs)
+                # f(x) -> f(-x)
+                value = value + self.func[1](-1 * rv_values[0], **kwargs)
+                value = np.where( rv_values[0] < 0., 0., value )
+            elif type(op) == str:
+                # rv add, sub, mul, div
                 redocache = not self.isuptodate or self._spline_pf == None
                 for name,value in zip(self.rv_names(), rv_values):
                     if (np.amin(value) < np.amin(self._cache[name]) or
@@ -874,7 +900,16 @@ class PF(object):
                         redocache = True
                 if redocache: self._build_cache(*rv_values)
                 value = self._spline_pf(*rv_values)
+            elif isinstance(op, PF):
+                # rv exp, log, pow
+                inverse = self.func[2](*rv_values)
+                if self.func[3] != None:
+                    jacobian = self.func[3](*rv_values)
+                else:
+                    jacobian = 1.
+                value = op(inverse, **kwargs) * jacobian
             else:
+                # pf add, mul
                 vals = [0.,0.]
                 for idx in [1,2]:
                     the_args = []
@@ -972,10 +1007,19 @@ class PF(object):
             value = self.norm.value * self.func[0].cdf(*rv_values, **kwargs)
             return value
         elif self.pftype == PF.DERIVED:
-            if not isinstance(self.func, list) or len(self.func) != 3:
+            if (not isinstance(self.func, list) or len(self.func) < 3 or
+                len(self.func) > 4):
                 raise SyntaxError('DERIVED function is not recognized.')
             op = self.func[0]
-            if type(op) == str:
+            if type(op) == str and op == 'rvabs':
+                # rv abs
+                cdf_plus = self.func[1].cdf(rv_values[0], **kwargs)
+                # cdf(|x|) = cdf(x) - cdf(-x)
+                cdf_minus = self.func[1].cdf(-1 * rv_values[0], **kwargs)
+                value = cdf_plus - cdf_minus
+                value = np.where( rv_values[0] < 0., 0., value )
+            elif type(op) == str:
+                # rv add, sub, mul, div
                 redocache = not self.isuptodate or self._spline_cdf == None
                 for name,value in zip(self.rv_names(), rv_values):
                     if (np.amin(value) < np.amin(self._cache[name]) or
@@ -983,7 +1027,12 @@ class PF(object):
                         redocache = True
                 if redocache: self._build_cache(*rv_values)
                 value = self.norm.value * self._spline_cdf(*rv_values)
+            elif isinstance(op, PF):
+                # rv exp, log, pow
+                inverse = self.func[2](*rv_values)
+                value = op.cdf(inverse, **kwargs)
             else:
+                # pf add, mul
                 vals = [0.,0.]
                 for idx in [1,2]:
                     the_args = []
@@ -1315,12 +1364,31 @@ class PF(object):
             if self._scale != None and self._scale.value != 0.:
                 value = value - self._scale.value
         if self.pftype == PF.DERIVED:
-            if not isinstance(self.func, list) or len(self.func) != 3:
+            if (not isinstance(self.func, list) or len(self.func) < 3 or
+                len(self.func) > 4):
                 raise SyntaxError('DERIVED function is not recognized.')
             op = self.func[0]
+            if type(op) == str and op == 'rvabs':
+                # rv abs
+                value = self.func[1].logpf(rv_values[0], **kwargs)
+                # f(x) -> f(-x)
+                value = value + self.func[1].logpf(-1 * rv_values[0],
+                                                   **kwargs)
+            elif type(op) == str:
+                # rv add, sub, mul, div
+                value = np.log(self(*args, **kwargs))
+            elif isinstance(op, PF):
+                # rv exp, log, pow
+                inverse = self.func[2](*rv_values)
+                value = op.logpf(inverse, **kwargs)
+                if self.func[3] != None:
+                    jacobian = self.func[3](*rv_values)
+                    value = value + np.log(jacobian)
             if op == operator.add:
+                # pf add
                 value = np.log(self(*args, **kwargs))
             elif op == operator.mul:
+                # pf mul
                 vals = [0.,0.]
                 for idx in [1,2]:
                     the_args = []
@@ -1632,6 +1700,14 @@ class PF(object):
             raise
         return pvalue
 
+    def rvabs(self, **kw):
+        """Operation equivalent to taking the abs of a random variable."""
+        try:
+            new = PF(func=['rvabs', self, None], options=kw)
+        except:
+            raise
+        return new
+
     def rvadd(self, other, **kw):
         """Operation equivalent to adding two random variables."""
         try:
@@ -1681,9 +1757,13 @@ class PF(object):
         try:
             auto_loc = False
             if isinstance(self.func, list):
-                if len(self.func) == 3:
+                if len(self.func) == 4 and isinstance(self.func[0], PF):
+                    # rv exp, log, pow
+                    data = self.func[1](self.func[0].rvs(**kwargs))
+                elif len(self.func) == 3:
                     auto_loc = True
                     if self.func[0] == operator.mul:
+                        # pf mul
                         data1 = self.func[1].rvs(**kwargs)
                         if len(self.func[1]._rvs) == 1:
                             data1 = data1.view(dtype=[(self.func[1]._rvs[0][0],
@@ -1695,11 +1775,14 @@ class PF(object):
                         # merge and returns a structured array
                         data = _join_struct_arrays([data1, data2])
                     elif self.func[0] == operator.add:
+                        # pf add
                         data1 = self.func[1].rvs(**kwargs)
                         data2 = self.func[2].rvs(**kwargs)
                         data3 = scipy.stats.uniform.rvs(size=len(data1))
                         cond = (data3 < self.func[1].norm.value)
                         data = cond * data1 + (1 - cond) * data2
+                    elif self.func[0] == 'rvabs':
+                        data = np.abs(self.func[1].rvs(**kwargs))
                     elif self.func[0] == 'rvadd':
                         data1 = self.func[1].rvs(**kwargs)
                         data2 = self.func[2].rvs(**kwargs)
@@ -1810,10 +1893,18 @@ class PF(object):
             value = self.norm.value * self.func[0].sf(*rv_values, **kwargs)
             return value
         elif self.pftype == PF.DERIVED:
-            if not isinstance(self.func, list) or len(self.func) != 3:
+            if (not isinstance(self.func, list) or len(self.func) < 3 or
+                len(self.func) > 4):
                 raise SyntaxError('DERIVED function is not recognized.')
             op = self.func[0]
-            if type(op) == str:
+            if type(op) == str and op == 'rvabs':
+                # rv abs
+                value = self.func[1].sf(rv_values[0], **kwargs)
+                # sf(|x|) = sf(x) + cdf(-x)
+                value = value + self.func[1].cdf(-1 * rv_values[0], **kwargs)
+                value = np.where( rv_values[0] < 0., 1., value )
+            elif type(op) == str:
+                # rv add, sub, mul, div
                 redocache = not self.isuptodate or self._spline_cdf == None
                 for name,value in zip(self.rv_names(), rv_values):
                     if (np.amin(value) < np.amin(self._cache[name]) or
@@ -1821,7 +1912,12 @@ class PF(object):
                         redocache = True
                 if redocache: self._build_cache(*rv_values)
                 value = 1 - self.norm.value * self._spline_cdf(*rv_values)
+            elif isinstance(op, PF):
+                # rv exp, log, pow
+                inverse = self.func[2](*rv_values)
+                value = op.sf(inverse, **kwargs)
             else:
+                # pf add, mul
                 vals = [0.,0.]
                 for idx in [1,2]:
                     the_args = []
@@ -1995,7 +2091,9 @@ class PF(object):
                                 self._rvs.append(rv)
                         elif not rv[0] in self.rv_names():
                             self._rvs.append(rv)
-                if len(self.func) > 1 and type(self.func[0]) == str:
+                if (len(self.func) > 1 and 
+                    type(self.func[0]) == str and
+                    self.func[0] != 'rvabs'):
                     # Tricky operators like convolution requiring a cache
                     self._build_cache()
             else:
@@ -2296,8 +2394,6 @@ class RV(object):
            Random Variable name
        pf : statspy.core.PF
            Probability Function object associated to a Random Variable
-       rvtype : RV.CONTINUOUS or RV.DISCRETE
-           Random Variable type
        logger : logging.Logger
            message logging system
 
@@ -2312,7 +2408,6 @@ class RV(object):
     def __init__(self, *args, **kwargs):
         self.name = ""
         self.pf = None
-        self.rvtype = RV.UNKNOWN
         self.logger = logging.getLogger('statspy.core.RV')
         try:
             self.logger.debug('args = %s, kwargs = %s',args, kwargs)
@@ -2341,9 +2436,9 @@ class RV(object):
         """
         try:
             if isinstance(other, RV):
-                new = RV(pf=self.pf.rvadd(other.pf))
+                new = RV(pf=self.pf.rvadd(other.pf), rvtype=self.rvtype())
             else:
-                new = RV(pf=self.pf.loc(other))
+                new = RV(pf=self.pf.loc(other), rvtype=self.rvtype())
         except:
             raise
         return new
@@ -2396,9 +2491,9 @@ class RV(object):
         """
         try:
             if isinstance(other, RV):
-                new = RV(pf=self.pf.rvdiv(other.pf))
+                new = RV(pf=self.pf.rvdiv(other.pf), rvtype=self.rvtype())
             else:
-                new = RV(pf=self.pf.scale((1./other)))
+                new = RV(pf=self.pf.scale((1./other)), rvtype=self.rvtype())
         except:
             raise
         return new
@@ -2421,20 +2516,77 @@ class RV(object):
         """
         try:
             if isinstance(other, RV):
-                new = RV(pf=self.pf.rvmul(other.pf))
+                if self == other:
+                    new = self ** 2
+                    new.set_type(self.rvtype())
+                    lower_bound = 0.
+                    if self.lower_bound() > 0.:
+                        lower_bound = self.lower_bound() ** 2
+                    upper_bound = self.upper_bound() ** 2
+                    new.set_bounds(lower_bound, upper_bound)
+                else:
+                    new = RV(pf=self.pf.rvmul(other.pf), rvtype=self.rvtype())
             else:
-                new = RV(pf=self.pf.scale(other))
+                new = RV(pf=self.pf.scale(other), rvtype=self.rvtype())
+        except:
+            raise
+        return new
+
+    def __pow__(self, other):
+        """Raise a random variable to the power of other.
+
+        Parameters
+        ----------
+        self : RV
+        other : Param, value, RV
+
+        Returns
+        -------
+        new : RV
+             new RV which is self raised to the power of other
+        
+        """
+        try:
+            if isinstance(other, RV) or isinstance(other, Param):
+                new = exp(other * log(self))
+            else:
+                val = 1.
+                if self.lower_bound() < 0.:
+                    if other != int(other):
+                        raise ValueError('negative number cannot be raised to a fractionnal power.')
+                    if int(other) % 2 == 0:
+                        self.logger.warning('Be aware, for even powers, the pow algorithm only works with symmetric pdf currently !')
+                        val = 2.
+                new = RV(pf=PF(func=[self.pf, # initial pf
+                                     lambda x : x ** other, # transformation
+                                     lambda y : y ** (1 / other), # inverse
+                                     lambda y : np.abs(y ** (1 / other - 1) /
+                                                       other) * val # jacobian
+                                     ]
+                               ),
+                         rvtype=self.rvtype())
+                if int(other) % 2 == 0 and self.lower_bound() < 0.:
+                    new.set_lower_bound(0.)
+                if new.rvtype() == RV.DISCRETE: new.func[2] = None
+            if isinstance(other, RV):
+                if (self.rvtype() == RV.CONTINUOUS or
+                    other.rvtype() == RV.CONTINUOUS):
+                    new.set_rvtype(RV.CONTINUOUS)
+                else:
+                    new.set_rvtype(RV.DISCRETE)
+            else:
+                new.set_rvtype(self.rvtype())
         except:
             raise
         return new
 
     def __radd__(self, other):
-        """Add a random variable and a parameter.
+        """Add a value and a random variable.
 
         Parameters
         ----------
         self : RV
-        other : Param, value
+        other : value
 
         Returns
         -------
@@ -2449,12 +2601,12 @@ class RV(object):
         return new
 
     def __rmul__(self, other):
-        """Multiply a parameter by a random variable.
+        """Multiply a value by a random variable.
 
         Parameters
         ----------
         self : RV
-        other : Param, value
+        other : value
 
         Returns
         -------
@@ -2464,6 +2616,27 @@ class RV(object):
         """
         try:
             new = RV(pf=self.pf.scale(other))
+        except:
+            raise
+        return new
+
+    def __rpow__(self, other):
+        """Raise other to the power of self, a random variable.
+
+        Parameters
+        ----------
+        self : value
+        other : RV
+
+        Returns
+        -------
+        new : RV
+             new RV which is other raised to the power of new
+        
+        """
+        try:
+            new = exp(self * math.log(other))
+            new.set_rvtype(self.rvtype())
         except:
             raise
         return new
@@ -2493,6 +2666,46 @@ class RV(object):
             raise
         return new
 
+    def bounds(self):
+        """Returns the lower and upper bounds (np.inf if infinite)."""
+        return self.pf._rvs[0][1], self.pf._rvs[0][2]
+
+    def lower_bound(self):
+        """Returns the lower bound on self (-np.inf if infinite)."""
+        return self.pf._rvs[0][1]
+
+    def rvtype(self):
+        """Returns the random variable type RV.CONTINUOUS, RV.DISCRETE or
+           RV.UNKNOWN."""
+        return self.pf._rvs[0][3]
+
+    def set_bounds(self, lower, upper):
+        """Set the lower and upper bounds of a random variable."""
+        self.pf._rvs[0][1] = lower
+        self.pf._rvs[0][2] = upper
+
+    def set_lower_bound(self, lower):
+        """Set the lower bound of a random variable."""
+        self.pf._rvs[0][1] = lower
+
+    def set_upper_bound(self, upper):
+        """Set the upper bound of a random variable."""
+        self.pf._rvs[0][2] = upper
+
+    def set_rvtype(self, rvtype):
+        """Set the random variable type."""
+        try:
+            if not (rvtype == RV.CONTINUOUS or
+                    rvtype == RV.DISCRETE):
+                raise ValueError("rvtype should CONTINUOUS or DISCRETE.")
+            self.pf._rvs[0][3] = rvtype
+        except:
+            raise
+
+    def upper_bound(self):
+        """Returns the upper bound on self (np.inf if infinite)."""
+        return self.pf._rvs[0][2]
+
     def _check_args_syntax(self, args, kwargs):
         if not len(args): return False
         if not isinstance(args[0],str):
@@ -2501,9 +2714,8 @@ class RV(object):
         if len(self.pf._rvs) != 1:
             raise SyntaxError("One and only one RV should be found in %s." % args)
         self.name = self.pf._rvs[0][0]
-        self.rvtype = self.pf._rvs[0][3]
         if self.pf.name == None:
-            if self.rvtype == RV.CONTINUOUS:
+            if self.rvtype() == RV.CONTINUOUS:
                 self.pf.name = 'pdf_%s' % self.name
             else:
                 self.pf.name = 'pmf_%s' % self.name
@@ -2513,13 +2725,47 @@ class RV(object):
         if not len(kwargs): return False
         if not foundArgs and not 'pf' in kwargs:
             raise SyntaxError("You cannot declare a Random Variable without specifying a pf.")
+        if 'pf' in kwargs: self.pf = kwargs['pf']
         if 'name' in kwargs:
             if self.name != None:
                 raise SyntaxError("self.name is already set to %s" % self.name)
             self.name = kwargs['name']
-        if 'pf' in kwargs: self.pf = kwargs['pf']
-        if 'rvtype' in kwargs: self.rvtype = kwargs['rvtype']
+            self.pf._rvs[0][0] = self.name
+        if ('bounds' in kwargs and isinstance(kwargs['bounds'], list) and
+            len(kwargs['bounds']) == 2):
+            self.set_bounds(kwargs['bounds'][0], kwargs['bounds'][1])
+        if 'rvtype' in kwargs: 
+            self.pf._rvs[0][3] = kwargs['rvtype']
         return True
+
+def abs(x):
+    """Compute the absolute value of a Random Variable.
+
+        Parameters
+        ----------
+        x : RV
+            Input random variable
+    
+        Returns
+        -------
+        y : RV
+            Absolute value of x
+    
+        Examples
+        --------
+        >>> import statspy as sp
+        >>> X = sp.RV("uniform(x;loc=-1.,length=2.)")
+        >>> Y = sp.abs(X)
+    """
+    try:
+        if not isinstance(x, RV):
+            raise SyntaxError('abs function only applies to RV.')
+        y = RV(pf=x.pf.rvabs(), rvtype=x.rvtype())
+        if x.lower_bound() < 0.: y.set_lower_bound(0.)
+    except:
+        raise
+    return y
+
 
 def check_method_exists(obj=None, name=""):
     if obj == None:
@@ -2530,16 +2776,16 @@ def check_method_exists(obj=None, name=""):
     return True
 
 def exp(x):
-    """Compute the exponential of a Parameter.
+    """Compute the exponential of a Parameter or a Random Variable.
 
         Parameters
         ----------
-        x : Param
-            Input parameter
+        x : Param, RV
+            Input parameter or random variable
     
         Returns
         -------
-        y : Param
+        y : Param, RV
             Exponential of x
     
         Examples
@@ -2547,14 +2793,25 @@ def exp(x):
         >>> import statspy as sp
         >>> x = sp.Param("x = 4 +- 1")
         >>> y = sp.exp(x)
+        >>> X = sp.RV("norm(x;mu=1.,sigma=0.1)")
+        >>> Y = sp.exp(X) # log-normal pdf
     """
     try:
         if isinstance(x, Param):
             y = Param(formula=[[math.exp, x]],
                       derivative=lambda z : math.exp(z),
                       strform=Param._build_math_formula('exp', x))
+        elif isinstance(x, RV):
+            y = RV(pf=PF(func=[x.pf, # initial pf
+                               lambda x : np.exp(x),   # transformation
+                               lambda y : np.log(y),   # inverse
+                               lambda y : 1./np.abs(y) # jacobian
+                               ]
+                         ),
+                   rvtype=x.rvtype())
+            if y.rvtype() == RV.DISCRETE: y.func[2] = None
         else:
-            raise SyntaxError('exp function only applies to Parameters.')
+            raise SyntaxError('exp function only applies to Param or RV.')
     except:
         raise
     return y
@@ -2593,16 +2850,16 @@ def get_obj(obj_name):
     return obj
 
 def log(x):
-    """Compute the logarithm of a Parameter.
+    """Compute the logarithm of a Parameter or a Random Variable.
 
         Parameters
         ----------
-        x : Param
-            Input parameter
+        x : Param, RV
+            Input parameter or random variable
     
         Returns
         -------
-        y : Param
+        y : Param, RV
             Logarithm of x
     
         Examples
@@ -2610,29 +2867,40 @@ def log(x):
         >>> import statspy as sp
         >>> x = sp.Param("x = 4 +- 1")
         >>> y = sp.log(x)
+        >>> X = sp.RV("lognorm(x;sigma=10)")
+        >>> Y = sp.log(X) # normal pdf
     """
     try:
         if isinstance(x, Param):
             y = Param(formula=[[math.log, x]],
                       derivative=lambda z : 1./z,
                       strform=Param._build_math_formula('log', x))
+        elif isinstance(x, RV):
+            y = RV(pf=PF(func=[x.pf, # initial pf
+                               lambda x : np.log(x), # transformation
+                               lambda y : np.exp(y), # inverse
+                               lambda y : np.exp(y)  # jacobian
+                               ]
+                         ),
+                   rvtype=x.rvtype())
+            if y.rvtype() == RV.DISCRETE: y.func[2] = None
         else:
-            raise SyntaxError('log function only applies to Parameters.')
+            raise SyntaxError('log function only applies to Param or RV')
     except:
         raise
     return y
 
 def sqrt(x):
-    """Compute the square root of a Parameter.
+    """Compute the square root of a Parameter or a Random Variable.
 
         Parameters
         ----------
-        x : Param
-            Input parameter
+        x : Param, RV
+            Input parameter or random variable
     
         Returns
         -------
-        y : Param
+        y : Param, RV
             Square root of x
     
         Examples
@@ -2646,8 +2914,17 @@ def sqrt(x):
             y = Param(formula=[[math.sqrt, x]],
                       derivative=lambda z : 1./2./math.sqrt(z),
                       strform=Param._build_math_formula('sqrt', x))
+        elif isinstance(x, RV):
+            y = RV(pf=PF(func=[x.pf, # initial pf
+                               lambda x : np.sqrt(x), # transformation
+                               lambda y : y * y,      # inverse
+                               lambda y : 2. * y      # jacobian
+                               ]
+                         ),
+                   rvtype=x.rvtype())
+            if y.rvtype() == RV.DISCRETE: y.func[2] = None
         else:
-            raise SyntaxError('sqrt function only applies to Parameters.')
+            raise SyntaxError('sqrt function only applies to Param or RV.')
     except:
         raise
     return y
