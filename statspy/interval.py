@@ -109,7 +109,8 @@ def pllr(pf, data, **kw):
             par.value = range[1]
             iter += 1
         par.value = range[0]
-        logger.debug('%s upper bound root finding range is %s' % (par.name, range))
+        logger.debug('%s upper bound root finding range is %s' % (par.name,
+                                                                  range))
         upper_bound = root_finder(_pllr_root_finding, range[0], range[1],
                                   args=(pf, data, par, quantile, nllfmin))
         logger.debug('%s upper bound = %f' % (par.name, upper_bound))
@@ -118,12 +119,14 @@ def pllr(pf, data, **kw):
         range = [popt[ipar][0] - math.sqrt(quantile) * popt[ipar][1],
                  popt[ipar][0]]
         par.value = range[0]
-        while (pf.pllr(data, uncond_nllf=nllfmin) < quantile and iter < maxiter):
+        while (pf.pllr(data, uncond_nllf=nllfmin) < quantile and
+               iter < maxiter):
             range[0] = range[0] - math.sqrt(quantile) * popt[ipar][1]
             par.value = range[0]
             iter += 1
         par.value = range[1]
-        logger.debug('%s lower bound root finding range is %s' % (par.name, range))
+        logger.debug('%s lower bound root finding range is %s' % (par.name,
+                                                                  range))
         lower_bound = root_finder(_pllr_root_finding, range[0], range[1],
                                   args=(pf, data, par, quantile, nllfmin))
         logger.debug('%s lower bound = %f' % (par.name, lower_bound))

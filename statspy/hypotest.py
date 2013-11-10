@@ -11,7 +11,8 @@ import scipy.special
 import scipy.stats
 import statspy as sp
 
-__all__ =['Result','pvalue_to_Zvalue','Zvalue_to_pvalue','pllr','hybrid']
+__all__ =['Result','pvalue_to_Zvalue','Zvalue_to_pvalue','likelihood_ratio',
+          'hybrid_pvalue']
 
 # Logging system
 logger = logging.getLogger(__name__)

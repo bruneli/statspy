@@ -86,10 +86,10 @@ for exp in exps:
     # Profile likelihood methods
     #
     data_P = (n_on, round(n_off))
-    res_pllr_P = statspy.hypotest.pllr(likelihood_P, data_P)
+    res_pllr_P = statspy.hypotest.likelihood_ratio(likelihood_P, data_P)
     exp.append(res_pllr_P.Zvalue)
     data_G = (n_on, n_off/tau0)
-    res_pllr_G = statspy.hypotest.pllr(likelihood_G, data_G)
+    res_pllr_G = statspy.hypotest.likelihood_ratio(likelihood_G, data_G)
     exp.append(res_pllr_G.Zvalue)
 
 for idx,var in enumerate(['n_on','n_off','tau','Z_P','Z_Bi','Z_PLP','Z_PLG']):
